@@ -1,10 +1,12 @@
 "use client";
+import { RecommendContactModal } from "./recommend-contact-modal";
+import { introductionCandidates, introduceContact } from "@/lib/contact-introduction";
 import {markMediaSent, prepareSocialMedia} from '@/lib/social-media';
 
 import {ReversePhoneRecord,ReconciliationRecord,ReverseComposerStatus,useReverseVisit} from "./reverse-phone-overlay";
 import {captureSelectedChat} from "@/lib/chat-screenshot";
 import {ChatScreenshotPreview} from "./chat-screenshot-preview";
-import {Share2,ScanLine,PhoneCall} from "lucide-react";
+import {Users,Share2,ScanLine,PhoneCall} from "lucide-react";
 import {startReversePhone,REVERSE_TYPE,grabReversePhone} from "@/lib/reverse-phone-runtime";
 import {useAppBack} from "@/lib/back-navigation";
 import { LivePhotoInput } from "./live-photo";
@@ -520,7 +522,7 @@ type PendingMessageJump = {
 };
 
 const TRANSIENT_MESSAGE_PREFIX = "ui-transient-";
-type RichModalKind = "live_photo" | "photo" | "text_photo" | "red_packet" | "transfer" | "location" | "transfer_target" | "voice_msg" | "gift" | "system_instruction";
+type RichModalKind = "recommend_contact" | "live_photo" | "photo" | "text_photo" | "red_packet" | "transfer" | "location" | "transfer_target" | "voice_msg" | "gift" | "system_instruction";
 type ChatTextInputHandle = {
     appendText: (text: string, options?: { focus?: boolean }) => void;
     clear: () => void;
@@ -760,6 +762,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     );
     const suggestEnabled = !memberInputLocked && !panelOpen && !suggestClosed && inputText.trim().length > 0;
     const plusMenuItems = [
+        ...(!isGroup ? [{icon: <Users size={22} strokeWidth={1.5}/>, label: "推荐好友名片", onClick: () => onOpenRichModal("recommend_contact")}] : []),
         ...(!isGroup&&characterId?[{icon:<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--c-text)" strokeWidth="1.5"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M10 18h4"/></svg>,label:"让TA查手机",onClick:()=>window.dispatchEvent(new CustomEvent('reverse-invite',{detail:{owner:characterId}}))}]:[]),
         { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--c-text)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>, label: "照片墙", onClick: () => onOpenRichModal("photo") },
         { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--c-text)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><line x1="7" y1="8" x2="17" y2="8" /><line x1="7" y1="12" x2="14" y2="12" /><line x1="7" y1="16" x2="11" y2="16" /></svg>, label: "文字图片", onClick: () => onOpenRichModal("text_photo") },
@@ -6859,6 +6862,16 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             )}
 
             {/* Rich Media Input Modals */}
+            {richModal === "recommend_contact" && !session.isGroup && <RecommendContactModal receiverId={session.contactId} onClose={() => setRichModal(null)} onSend={(id,note) => {
+                if (isGenerating) { showChatToast("请先等待对方回复"); return; }
+                const target = loadCharacters().find(c => c.id === id);
+                if (!target) return;
+                // Validate again at send time; another tab may have linked them meanwhile.
+                if (!introductionCandidates(session.contactId).some(c => c.id === id)) { showChatToast("对方已经认识此人，或联系人范围已改变"); return; }
+                if (!sendRichMessage("contact_card", { contactCardName: target.name, contactCardCharacterId: id, contactIntroduction: true, contactIntroductionNote: note.trim().slice(0,200) })) return;
+                introduceContact(session.contactId, id, note);
+                setRichModal(null);
+            }}/>}
             {richModal === "voice_msg" && (
                 <VoiceRecordModal
                     characterId={session.contactId}

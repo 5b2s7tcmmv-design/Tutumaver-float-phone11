@@ -824,6 +824,7 @@ export async function sendLLMStreamRequest(
     options?: {
         skipOutputRegex?: boolean;
         skipWorldline?: boolean;
+        beforeTimestamp?: string;
         /** 不剥幻觉时间戳：流式增量原样直出（不扣尾巴），落库文本与流出的一字不差 */
         skipTimestampStrip?: boolean;
         includeReasoning?: boolean;
@@ -843,7 +844,7 @@ export async function sendLLMStreamRequest(
     if(phoneOwner&&callbacks?.onDelta){const emit=callbacks.onDelta;callbacks={...callbacks,onDelta:phoneTextStream(emit)};}
     const afterPlugins = await applyChatPluginLlmRequest(preset, messages, pluginPurpose, options?.debugSessionId);
     const effectivePreset = afterPlugins.preset;
-    const worldlineContext = ("skipWorldline" in (options||{}) && (options as {skipWorldline?:boolean})?.skipWorldline) ? "" : worldlineContextForApp(pluginPurpose, { publicEvents: true, focusText: afterPlugins.messages.map(m => typeof m.content === "string" ? m.content : "").join("\n").slice(-3000) });
+    const worldlineContext = ("skipWorldline" in (options||{}) && (options as {skipWorldline?:boolean})?.skipWorldline) ? "" : worldlineContextForApp(pluginPurpose, { beforeTimestamp: (options as {beforeTimestamp?: string})?.beforeTimestamp, publicEvents: true, focusText: afterPlugins.messages.map(m => typeof m.content === "string" ? m.content : "").join("\n").slice(-3000) });
     const worldlineMessages = worldlineContext ? [{ role: "system" as const, content: worldlineContext }, ...afterPlugins.messages] : afterPlugins.messages;
     const originalOnDelta = callbacks?.onDelta;
     const pluginCallbacks: ChatCompletionStreamCallbacks | undefined = callbacks ? {
@@ -941,6 +942,7 @@ export async function sendLLMRequest(
     options?: {
         skipOutputRegex?: boolean;
         skipWorldline?: boolean;
+        beforeTimestamp?: string;
         includeReasoning?: boolean;
         /** 供调用方捕获模型思维链（reasoning）内容，不影响返回文本 */
         onReasoning?: (text: string) => void;
@@ -958,7 +960,7 @@ export async function sendLLMRequest(
 
     const afterPlugins = await applyChatPluginLlmRequest(preset, messages, pluginPurpose, options?.debugSessionId);
     const effectivePreset = afterPlugins.preset;
-    const worldlineContext = ("skipWorldline" in (options||{}) && (options as {skipWorldline?:boolean})?.skipWorldline) ? "" : worldlineContextForApp(pluginPurpose, { publicEvents: true, focusText: afterPlugins.messages.map(m => typeof m.content === "string" ? m.content : "").join("\n").slice(-3000) });
+    const worldlineContext = ("skipWorldline" in (options||{}) && (options as {skipWorldline?:boolean})?.skipWorldline) ? "" : worldlineContextForApp(pluginPurpose, { beforeTimestamp: (options as {beforeTimestamp?: string})?.beforeTimestamp, publicEvents: true, focusText: afterPlugins.messages.map(m => typeof m.content === "string" ? m.content : "").join("\n").slice(-3000) });
     const worldlineMessages = worldlineContext ? [{ role: "system" as const, content: worldlineContext }, ...afterPlugins.messages] : afterPlugins.messages;
     const requestMessages = toLlmRequestMessages(worldlineMessages);
     const request = buildProviderRequest(config, effectivePreset, requestMessages);
@@ -1166,7 +1168,7 @@ export async function sendLLMToolStreamRequest(
 
     const afterPlugins = await applyChatPluginLlmRequest(preset, messages, pluginPurpose, options?.debugSessionId);
     const effectivePreset = afterPlugins.preset;
-    const worldlineContext = ("skipWorldline" in (options||{}) && (options as {skipWorldline?:boolean})?.skipWorldline) ? "" : worldlineContextForApp(pluginPurpose, { publicEvents: true, focusText: afterPlugins.messages.map(m => typeof m.content === "string" ? m.content : "").join("\n").slice(-3000) });
+    const worldlineContext = ("skipWorldline" in (options||{}) && (options as {skipWorldline?:boolean})?.skipWorldline) ? "" : worldlineContextForApp(pluginPurpose, { beforeTimestamp: (options as {beforeTimestamp?: string})?.beforeTimestamp, publicEvents: true, focusText: afterPlugins.messages.map(m => typeof m.content === "string" ? m.content : "").join("\n").slice(-3000) });
     const worldlineMessages = worldlineContext ? [{ role: "system" as const, content: worldlineContext }, ...afterPlugins.messages] : afterPlugins.messages;
     const request = buildProviderRequest(config, effectivePreset, worldlineMessages, { tools, stream: true, maxTokens: options?.maxTokens });
     publishDebugPromptSnapshot({ request, config, preset: effectivePreset, meta, options, requestKind: "native-tools-stream", tools });
@@ -1313,6 +1315,7 @@ export async function sendLLMToolRequest(
     options?: {
         skipOutputRegex?: boolean;
         skipWorldline?: boolean;
+        beforeTimestamp?: string;
         includeReasoning?: boolean;
         appId?: string;
         appTags?: string[];
@@ -1327,7 +1330,7 @@ export async function sendLLMToolRequest(
 
     const afterPlugins = await applyChatPluginLlmRequest(preset, messages, pluginPurpose, options?.debugSessionId);
     const effectivePreset = afterPlugins.preset;
-    const worldlineContext = ("skipWorldline" in (options||{}) && (options as {skipWorldline?:boolean})?.skipWorldline) ? "" : worldlineContextForApp(pluginPurpose, { publicEvents: true, focusText: afterPlugins.messages.map(m => typeof m.content === "string" ? m.content : "").join("\n").slice(-3000) });
+    const worldlineContext = ("skipWorldline" in (options||{}) && (options as {skipWorldline?:boolean})?.skipWorldline) ? "" : worldlineContextForApp(pluginPurpose, { beforeTimestamp: (options as {beforeTimestamp?: string})?.beforeTimestamp, publicEvents: true, focusText: afterPlugins.messages.map(m => typeof m.content === "string" ? m.content : "").join("\n").slice(-3000) });
     const worldlineMessages = worldlineContext ? [{ role: "system" as const, content: worldlineContext }, ...afterPlugins.messages] : afterPlugins.messages;
     const request = buildProviderRequest(config, effectivePreset, worldlineMessages, { tools });
     publishDebugPromptSnapshot({ request, config, preset: effectivePreset, meta, options, requestKind: "native-tools", tools });
@@ -3095,8 +3098,9 @@ async function generateChatCompletionCore(
         }
     }
 
-    // Memory: increment event counter + check if summarization needed (non-blocking)
-    (async () => {
+    // Phone counts only the finalized native call, never accept/opening/transcript previews.
+    // Chat retains its existing counter behavior.
+    if ((options?.appId ?? "chat") !== "phone") (async () => {
         try {
             incrementEventCounter(character.id); // user message
             incrementEventCounter(character.id); // AI reply

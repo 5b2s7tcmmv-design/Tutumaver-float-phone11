@@ -1,4 +1,4 @@
-# Tutuma Float Phone 1.6.3（26.11.16）
+# Tutuma Float Phone 1.7（26.11.18）
 
 本项目基于小笼包老师的 **AI Virtual Phone** 原始项目，并在 **MOMO（末末）老师的二次开发版本**基础上继续开发。
 
@@ -63,3 +63,7 @@
 - MiniMax 增加业务错误码、空音频及无效编码校验，并兼容返回音频下载链接的接口。未使用真实用户密钥调用收费接口，个别设备的无声反馈仍需更新后复测。
 
 验证命令：`node scripts/check-share-shell-speech.cjs`、`node scripts/check-share-lock-startup.cjs`、`node scripts/check-android-tts.cjs`、`npm run typecheck`、`npm run android:web`。
+
+## 1.7 更新
+
+接通短信、电话、泡泡等 App 的角色记忆，补齐直播与其他来源的事件记录、匿名和时间边界；联系人角色卡可设置统一 Chat 网名，Chat 支持推荐好友名片并快捷建立关系。长期向量与核心记忆策略维持现有设置。详情见 [更新记录](docs/cross-app-memory-update.md)。
