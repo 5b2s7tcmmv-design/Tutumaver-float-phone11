@@ -394,10 +394,14 @@ export function BindingManager() {
         const binding = getCharacterBinding(config, selectedCharId);
         if (level === "character") return inherited;
         // APP 默认先于角色默认；角色绑定优先级更高。
+        // Browser app-global bindings take priority over generic character defaults;
+        // character-specific Browser overrides still win when resolving the final slot.
+        const browserScope = selectedAppId === "browser" || selectedAppId === "checkphone_browser";
+        if (browserScope) mergeSlotInto(inherited, binding.defaults);
         if (level === "app" && selectedAppId) {
             mergeSlotInto(inherited, config.appDefaults?.[selectedAppId]);
         }
-        mergeSlotInto(inherited, binding.defaults);
+        if (!browserScope) mergeSlotInto(inherited, binding.defaults);
         return inherited;
     };
 
@@ -468,6 +472,14 @@ export function BindingManager() {
                 iconDataUrl: null as string | null,
                 color: APP_OVERRIDE_COLORS[appId],
             })),
+        // The orange Browser inside Check Phone is an independent app binding, not the Chat/checkphone default.
+        {
+            id: "checkphone_browser",
+            label: "反查手机浏览器",
+            iconId: "browser" as IconId,
+            iconDataUrl: null as string | null,
+            color: "#74848a",
+        },
         ...customApps.map(app => ({
             id: toCustomAppIconId(app.id) as string,
             label: app.name,
