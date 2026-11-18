@@ -148,12 +148,13 @@ export type UnifiedRecentItem =
     };
 
 function isPromptHiddenChatMessage(
-    msg: Pick<ChatMessage, "mediaType" | "nativeToolResult" | "nativeToolCalls">,
+    msg: Pick<ChatMessage, "mediaType" | "mediaData" | "nativeToolResult" | "nativeToolCalls">,
     options?: { includeNativeToolHistory?: boolean },
 ): boolean {
     // 文本协议的 tool_call / tool_result 是正常上下文。只有原生工具轮的
     // 结构化残留按 includeNativeToolHistory 开关控制。
-    return (msg.nativeToolCalls?.length && !options?.includeNativeToolHistory)
+    return (msg.mediaType === "app_card" && msg.mediaData?.appName === "reverse_phone")
+        || (msg.nativeToolCalls?.length && !options?.includeNativeToolHistory)
         || (msg.mediaType === "tool_result" && !!msg.nativeToolResult && !options?.includeNativeToolHistory)
         || msg.mediaType === "tool_notice"
         || msg.mediaType === "memory_write_request";
