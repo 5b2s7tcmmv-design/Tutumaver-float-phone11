@@ -946,6 +946,8 @@ export async function sendLLMRequest(
         includeReasoning?: boolean;
         /** 供调用方捕获模型思维链（reasoning）内容，不影响返回文本 */
         onReasoning?: (text: string) => void;
+        /** Structured Browser error diagnostics. */
+        onResponseMeta?: (meta: { finishReason?: string; blockReason?: string; refusal?: boolean }) => void;
         appId?: string;
         translationCharacterId?: string;
         appTags?: string[];
@@ -1004,6 +1006,16 @@ export async function sendLLMRequest(
 
         const data = await response.json();
         const parsed = parseProviderResponse(request.providerKind, data);
+        if (options?.onResponseMeta) {
+            const detail = emptyResponseDetails(parsed.raw);
+            const response = data && typeof data === "object" ? data as Record<string, unknown> : {};
+            const choices = Array.isArray(response.choices) ? response.choices : [];
+            const first = choices[0] && typeof choices[0] === "object" ? choices[0] as Record<string, unknown> : {};
+            const message = first.message && typeof first.message === "object" ? first.message as Record<string, unknown> : {};
+            try {
+                options.onResponseMeta({ finishReason: detail.finishReason, blockReason: detail.blockReason, refusal: Boolean(message.refusal) });
+            } catch { /* Diagnostics must not interrupt generation. */ }
+        }
         let rawOutput = parsed.content || "";
 
         if (parsed.reasoning) {
