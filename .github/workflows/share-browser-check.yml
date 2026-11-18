@@ -17,6 +17,9 @@ on:
       - "lib/secret-phone-inspection.ts"
       - "lib/phone-inspection-settings.ts"
       - "scripts/check-browser-009.cjs"
+      - "scripts/check-inspection-revocation.cjs"
+      - "lib/short-term-assembler.ts"
+      - "components/chat/reverse-phone-overlay.tsx"
       - ".github/workflows/share-browser-check.yml"
   workflow_dispatch:
 jobs:
@@ -34,5 +37,7 @@ jobs:
         run: npm run typecheck
       - name: Browser regression checks
         run: node scripts/check-browser-009.cjs
+      - name: Phone inspection revocation regression
+        run: node scripts/check-inspection-revocation.cjs
       - name: Android web bundle
         run: npm run android:web
