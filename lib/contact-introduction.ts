@@ -1,6 +1,6 @@
 import { loadCharacters } from "./character-storage";
-import { loadChatContacts, loadChatMessages, loadChatSessions } from "./chat-storage";
-import { addCharacterWorldRelation, getCharacterWorldGroup } from "./character-world-storage";
+import { loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage } from "./chat-storage";
+import { addCharacterWorldRelation, getCharacterWorldGroup, loadCharacterWorldGroups, saveCharacterWorldGroups } from "./character-world-storage";
 import { resolveChatCharacterDisplayName } from "./chat-profile-storage";
 
 export function introductionCandidates(receiverId: string) {
@@ -10,15 +10,28 @@ export function introductionCandidates(receiverId: string) {
   return loadCharacters().filter(c => c.id !== receiverId && friends.has(c.id) && group.memberIds.includes(c.id)
     && !group.relations.some(r => r.fromCharacterId === c.id && r.toCharacterId === receiverId || r.fromCharacterId === receiverId && r.toCharacterId === c.id));
 }
-export function introduceContact(receiverId: string, targetId: string, note: string): boolean {
+export function introduceContact(receiverId: string, targetId: string, note: string, sourceMessageId: string): boolean {
   if (!introductionCandidates(receiverId).some(c => c.id === targetId)) return false;
   const group = getCharacterWorldGroup(receiverId)!;
-  // A relationship label is data, never an instruction with system authority.
-  addCharacterWorldRelation(group.id, receiverId, targetId, note.trim().slice(0,200) || "经用户介绍成为朋友", {bidirectional: true, kind: "friend"});
+  addCharacterWorldRelation(group.id, receiverId, targetId, note.trim().slice(0, 200) || "经用户介绍成为朋友", {
+    bidirectional: true,
+    kind: "friend",
+    sourceMessageId,
+  });
   return true;
 }
-/** Project from the actual sent card. Deleting that card removes this source only;
- * it does not silently undo a relationship or erase later independent dialogue. */
+/** Remove only the relationship introduced by a card now being deleted.
+ * Independent/older relationships are preserved even if the same two people are involved. */
+export function unlinkDeletedIntroductionCards(deleted: Pick<ChatMessage, "id" | "mediaData" | "mediaType">[]): void {
+  const ids = new Set(deleted.filter(m => m.mediaType === "contact_card" && m.mediaData?.contactIntroduction).map(m => m.id));
+  if (!ids.size) return;
+  const groups = loadCharacterWorldGroups();
+  if (!groups.some(g => g.relations.some(r => r.sourceMessageId && ids.has(r.sourceMessageId)))) return;
+  saveCharacterWorldGroups(groups.map(g => ({
+    ...g, relations: g.relations.filter(r => !r.sourceMessageId || !ids.has(r.sourceMessageId))
+  })));
+}
+/** Project introductions from the original cards still present in Chat. */
 export function contactIntroductionEntries(characterId: string) {
   const characters = loadCharacters();
   return loadChatSessions().filter(s => !s.isGroup).flatMap(s => loadChatMessages(s.id).flatMap(m => {

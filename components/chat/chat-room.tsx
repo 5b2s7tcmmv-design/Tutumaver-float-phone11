@@ -3696,7 +3696,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         return { ...msg, mediaData: updatedData };
     };
 
-    const sendRichMessage = (mediaType: ChatMessage["mediaType"], mediaData: ChatMessage["mediaData"], content: string = "", mediaUrl?: string): boolean => {
+    const sendRichMessage = (mediaType: ChatMessage["mediaType"], mediaData: ChatMessage["mediaData"], content: string = "", mediaUrl?: string, onSent?: (message: ChatMessage) => void): boolean => {
         if (isReverseActive()&&!activeReverse()?.paused) { showChatToast("先点抢回来，再编辑或发送"); return false; }
         if (!ensureGroupSpeakPermission()) return false;
         if (isGenerating) {
@@ -3731,6 +3731,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             mediaData: walletDebit.mediaData,
             ...(mediaUrl ? { mediaUrl } : {}),
         });
+        onSent?.(newMsg);
         if (mediaType === "image") markMediaSent(newMsg.id);
         setMessages(prev => [...prev, newMsg]);
         setPendingGenerate(true);
@@ -5763,7 +5764,6 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         needsInitialScrollRef.current = true;
         prevMsgCountRef.current = 0;
         syncMessagesFromStorage();
-        if(session.isGroup)triggerReply();
     };
 
     const editingMessage = editingMessageId ? messages.find(m => m.id === editingMessageId) : null;
@@ -6868,8 +6868,8 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                 if (!target) return;
                 // Validate again at send time; another tab may have linked them meanwhile.
                 if (!introductionCandidates(session.contactId).some(c => c.id === id)) { showChatToast("对方已经认识此人，或联系人范围已改变"); return; }
-                if (!sendRichMessage("contact_card", { contactCardName: target.name, contactCardCharacterId: id, contactIntroduction: true, contactIntroductionNote: note.trim().slice(0,200) })) return;
-                introduceContact(session.contactId, id, note);
+                if (!sendRichMessage("contact_card", { contactCardName: target.name, contactCardCharacterId: id, contactIntroduction: true, contactIntroductionNote: note.trim().slice(0,200) }, "", undefined,
+                    message => introduceContact(session.contactId, id, note, message.id))) return;
                 setRichModal(null);
             }}/>}
             {richModal === "voice_msg" && (
