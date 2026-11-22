@@ -58,16 +58,6 @@ export function loadPersonalPushCloudState(): PersonalPushCloudState | null {
   }
 }
 
-/** 屏幕速聊只允许进入带连续会话/原子写入结构的最新版个人云。 */
-export function isPersonalScreenChatCloudReady(): boolean {
-  const state = loadPersonalPushCloudState();
-  return Boolean(
-    isPersonalPushCloudActive()
-    && state?.healthStatus === "ready"
-    && state.schemaVersion >= PERSONAL_PUSH_SCHEMA_VERSION,
-  );
-}
-
 /** 只有部署记录和当前云备份仍指向同一个项目时才启用，防止换项目后误发数据。 */
 export function isPersonalPushCloudActive(): boolean {
   const state = loadPersonalPushCloudState();
@@ -171,10 +161,10 @@ async function waitForPersonalPushHealth(
       health?.ok
       && data?.ok === true
       && Number(data.schemaVersion) >= PERSONAL_PUSH_SCHEMA_VERSION
-      && data.capabilities?.includes("screen-chat-continuous")
+      
     ) return { ready: true };
     if (health?.ok && data?.ok === true) {
-      lastError = "个人云版本较旧，请重新部署后再启用屏幕速聊。";
+      lastError = "个人云离线推送版本较旧，请重新部署。";
       return { ready: false, error: lastError };
     }
     lastError = data?.error || (health ? `健康检查返回 HTTP ${health.status}` : "暂时无法连接个人云函数");
@@ -192,8 +182,7 @@ export type PersonalPushConnectOutcome =
  * 换设备重连：不重新部署、不需要 Access Token。
  * 用当前云备份配置（URL + service_role key）打一次既有网关函数的健康检查，
  * 通过就地恢复本机部署状态；函数不存在（404）或探测失败则维持未部署。
- * 旧版函数也接：基础离线推送可用，schemaVersion 如实记录，屏幕速聊等
- * 新能力仍由 isPersonalScreenChatCloudReady 按版本关着，提示用户升级部署。
+ * 旧版函数也接：基础离线推送可用，schemaVersion 如实记录。
  */
 export async function connectPersonalPushCloud(): Promise<PersonalPushConnectOutcome> {
   const backup = loadCloudBackupConfig();
@@ -224,23 +213,21 @@ export async function connectPersonalPushCloud(): Promise<PersonalPushConnectOut
   }
 
   const reported = Number(data.schemaVersion);
-  const upToDate = reported >= PERSONAL_PUSH_SCHEMA_VERSION
-    && Boolean(data.capabilities?.includes("screen-chat-continuous"));
+  const upToDate = reported >= PERSONAL_PUSH_SCHEMA_VERSION;
   savePersonalPushState({
     enabled: true,
     projectRef,
     url,
     deployedAt: new Date().toISOString(),
     healthStatus: "ready",
-    // 版本号如实记录；报了新版本号但缺能力标记的异常情况按旧版收，
-    // 免得屏幕速聊被误放行
+    // 版本号如实记录。
     schemaVersion: upToDate
       ? reported
       : Math.min(Number.isSafeInteger(reported) ? reported : 2, PERSONAL_PUSH_SCHEMA_VERSION - 1),
   });
   return {
     status: "connected",
-    note: upToDate ? undefined : "云函数版本较旧：基础离线推送可用，屏幕速聊等新能力需重新部署升级（云端数据不受影响）。",
+    note: upToDate ? undefined : "云函数版本较旧：基础离线推送可用，建议重新部署升级（云端数据不受影响）。",
   };
 }
 
@@ -255,17 +242,16 @@ export async function deployPersonalPushCloud(accessToken: string): Promise<Pers
   const projectRef = projectRefFromUrl(url);
   if (!projectRef) throw new Error("无法从 Supabase URL 解析项目标识。");
 
-  const [gatewayRes, generateRes, screenRes, schemaRes] = await Promise.all([
+  const [gatewayRes, generateRes, schemaRes] = await Promise.all([
     fetch("/ai-phone-push/gateway.mjs", { cache: "no-store" }),
     fetch("/ai-phone-push/push-generate.mjs", { cache: "no-store" }),
-    fetch("/ai-phone-push/screen-chat.mjs", { cache: "no-store" }),
     fetch("/ai-phone-push/schema.sql", { cache: "no-store" }),
   ]);
-  if (!gatewayRes.ok || !generateRes.ok || !screenRes.ok || !schemaRes.ok) {
+  if (!gatewayRes.ok || !generateRes.ok || !schemaRes.ok) {
     throw new Error("获取离线推送部署包失败，请刷新页面后重试。");
   }
-  const [gatewayCode, generateCode, screenChatCode, schemaSql] = await Promise.all([
-    gatewayRes.text(), generateRes.text(), screenRes.text(), schemaRes.text(),
+  const [gatewayCode, generateCode, schemaSql] = await Promise.all([
+    gatewayRes.text(), generateRes.text(), schemaRes.text(),
   ]);
 
   let response: Response;
@@ -273,7 +259,7 @@ export async function deployPersonalPushCloud(accessToken: string): Promise<Pers
     response = await fetch("/api/push/deploy-personal", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ projectRef, token, gatewayCode, generateCode, screenChatCode, schemaSql }),
+      body: JSON.stringify({ projectRef, token, gatewayCode, generateCode, schemaSql }),
     });
   } catch {
     throw new Error("无法访问站点部署接口，请检查网络后重试。");
