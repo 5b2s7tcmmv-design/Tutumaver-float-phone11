@@ -224,7 +224,7 @@ function normalizeTransaction(value: unknown): WalletTransaction | null {
   const cardId = rawCardId === LEGACY_DEFAULT_WALLET_CARD_ID ? WALLET_BALANCE_ACCOUNT_ID : rawCardId;
   const title = cleanText(record.title, 120);
   const rawKind = cleanText(record.kind, 40);
-  const kind = rawKind === "payment" || rawKind === "adjustment" || rawKind === "transfer_out" || rawKind === "refund"
+  const kind = rawKind === "currency_exchange" || rawKind === "payment" || rawKind === "adjustment" || rawKind === "transfer_out" || rawKind === "refund"
     ? rawKind
     : "transfer_in";
   if (!id || !cardId || !title) return null;
@@ -245,6 +245,8 @@ function normalizeTransaction(value: unknown): WalletTransaction | null {
     originalCurrency: record.originalCurrency ? walletCurrency(record.originalCurrency) : undefined,
     originalAmount: record.originalAmount == null ? undefined : normalizeMoney(record.originalAmount),
     exchangeRate: typeof record.exchangeRate === "number" && Number.isFinite(record.exchangeRate) ? record.exchangeRate : undefined,
+    exchangeToCurrency: typeof record.exchangeToCurrency === "string" ? walletCurrency(record.exchangeToCurrency) : undefined,
+    exchangeToAmount: typeof record.exchangeToAmount === "number" && Number.isFinite(record.exchangeToAmount) ? normalizeMoney(record.exchangeToAmount) : undefined,
     relatedMessageId: cleanText(record.relatedMessageId, 120) || undefined,
     source: record.source === "generated" || record.source === "manual" ? record.source : "app",
     credit: record.credit === true,
@@ -696,6 +698,27 @@ export function recordWalletCredit(input: WalletLedgerInput): WalletPaymentResul
     transactions: [transaction, ...state.transactions],
   }, input.ownerId, input.userIdentityId);
   return { ok: true, state: next, transaction };
+}
+
+/** Single-ledger, atomic currency conversion within one owner's real wallet. */
+export function convertWalletCurrency(input:{from:WalletCurrency;to:WalletCurrency;amount:number;ownerId?:string;userIdentityId?:string;requestId?:string}):WalletPaymentResult {
+  const state=loadWalletState(input.ownerId,input.userIdentityId);
+  const {from,to}=input;
+  const valid=[state.primaryCurrency,...(state.commonCurrencies||[])];
+  if(from===to || !WALLET_CURRENCIES.includes(from) || !WALLET_CURRENCIES.includes(to) || !valid.includes(to)) return {ok:false,state,error:"请从已设置的其他常用币种中选择目标币种。"};
+  if(input.requestId){const old=state.transactions.find(t=>t.kind==="currency_exchange"&&t.relatedOrderId===input.requestId);if(old)return {ok:true,state,transaction:old};}
+  if(!Number.isFinite(input.amount)||input.amount<=0) return {ok:false,state,error:"请输入有效兑换金额。"};
+  const amount=roundWalletMoney(input.amount,from);
+  const available=getWalletCurrencyBalance(state,from);
+  if(amount<=0||amount>available) return {ok:false,state,error:"金额超出该币种可用余额。"};
+  const received=exchangeWalletAmount(amount,from,to);
+  if(!Number.isFinite(received)||received<=0)return {ok:false,state,error:"兑换结果过小，请增加金额。"};
+  const sourceAfter=roundWalletMoney(available-amount,from);
+  const targetAfter=roundWalletMoney(getWalletCurrencyBalance(state,to)+received,to);
+  const balances={...state.currencyBalances,[from]:sourceAfter,[to]:targetAfter};
+  const transaction:WalletTransaction={id:generateWalletId("wallet_fx"),cardId:state.defaultCardId,accountType:"balance",title:"货币兑换",amount:-amount,currency:from,kind:"currency_exchange",category:"货币兑换",source:"manual",createdAt:new Date().toISOString(),detail:`${formatCurrencyAmount(amount,from)} → ${formatCurrencyAmount(received,to)}（固定参考汇率）`,balanceAfter:sourceAfter,exchangeRate:received/amount,exchangeToCurrency:to,exchangeToAmount:received,relatedOrderId:input.requestId};
+  const next=saveWalletState({...state,balance:from==="CNY"?sourceAfter:to==="CNY"?targetAfter:state.balance,currencyBalances:balances,transactions:[transaction,...state.transactions]},input.ownerId,input.userIdentityId);
+  return {ok:true,state:next,transaction};
 }
 
 export function setWalletCurrencyBalance(currency: WalletCurrency, amount: number, ownerId?: string): WalletPaymentResult {
