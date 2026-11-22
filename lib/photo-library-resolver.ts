@@ -1,3 +1,4 @@
+import {mediaScope} from "./media-preferences";
 import { photoStorySearchText } from "./photo-story-data";
 import { getChatImageFromIndexedDB } from "./chat-asset-storage";
 import { sendLLMRequest } from "./chat-engine";
@@ -143,9 +144,10 @@ function scorePhoto(photo: PhotoRecord, request: PhotoResolverRequest): { score:
   return { score, reasons };
 }
 
-export function getPhotoSourceStrategy(_context: "chat" | "moments" | "wvs" | "bubble" | "sms" | "other"): PhotoSourceStrategy {
+export function getPhotoSourceStrategy(_context: "chat" | "moments" | "wvs" | "bubble" | "sms" | "other",actorId?:string): PhotoSourceStrategy {
   const preferences = loadPhotoLibrary().preferences;
-  return preferences.importedStrategy;
+  const app=({chat:'chat',moments:'moments',wvs:'weverse',bubble:'lysn',sms:'sms',other:'twitter'} as const)[_context];
+  return mediaScope(app,actorId).source || preferences.importedStrategy;
 }
 
 export function getPhotoResolverDebugEnabled(): boolean {
