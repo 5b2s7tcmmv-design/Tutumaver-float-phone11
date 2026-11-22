@@ -1,5 +1,6 @@
 "use client";
 import {OfflineMusicIconSetting} from "./offline-music-icon-setting";
+import { ChatCallArchivesPage } from "./chat-call-archives-page";
 
 import { loadCallFirstSpeaker, saveCallFirstSpeaker, type CallFirstSpeaker } from "@/lib/call-first-speaker";
 import {InspectionPermissionSettings} from "./inspection-permission-settings";
@@ -512,6 +513,7 @@ export function ChatSettingsPanel({
     const [showSearch, setShowSearch] = useState(false);
     // TA 的电脑：翻看角色云端电脑（连接了角色电脑才显示入口）
     const [showComputer, setShowComputer] = useState(false);
+    const [showCallArchives, setShowCallArchives] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [submittedSearchQuery, setSubmittedSearchQuery] = useState("");
     const [searchHistoryMessages, setSearchHistoryMessages] = useState<ChatMessage[]>([]);
@@ -1209,6 +1211,11 @@ export function ChatSettingsPanel({
                         <div className="menu-label-group"><span className="menu-label">TA 给我点外卖</span><span className="menu-desc">{allowCharacterTakeout ? `${userTakeoutLocation || "未填我的位置"} · ${characterTakeoutLocation || "未填 TA 的位置"}` : "关闭 · 设置双方位置后可开启"}</span></div>
                         <div className="menu-right"><span className="menu-desc mr-1">{allowCharacterTakeout ? "已开启" : "未开启"}</span><ChevronRight size={16} /></div>
                     </button>}
+                    <button className="menu-item" onClick={() => setShowCallArchives(true)}>
+                        <ChatInfoIcon icon={Phone} color={BINDING_ACCENTS.voice} />
+                        <div className="menu-label-group"><span className="menu-label">通话记录</span><span className="menu-desc">语音／视频文字归档</span></div>
+                        <div className="menu-right"><ChevronRight size={16} /></div>
+                    </button>
                     <button className="menu-item" onClick={openSearchPanel}>
                         <ChatInfoIcon icon={Search} color={BINDING_ACCENTS.api} />
                         <div className="menu-label-group"><span className="menu-label">查找聊天记录</span></div>
@@ -2179,6 +2186,7 @@ export function ChatSettingsPanel({
                 </div>
             )}
 
+            {showCallArchives && <ChatCallArchivesPage sessionId={session.id} onClose={() => setShowCallArchives(false)} />}
             {/* Sub-page: TA 的电脑 */}
             {showComputer && (
                 <CharacterComputerPage
