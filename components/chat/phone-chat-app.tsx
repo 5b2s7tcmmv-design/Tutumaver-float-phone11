@@ -57,6 +57,11 @@ export const PhoneChatApp = memo(function PhoneChatApp({ onClose, initialSession
         return () => { window.removeEventListener(CHAT_APPEARANCE_OPEN, open); window.removeEventListener("keydown", close); };
     }, []);
     const [hideTabBar, setHideTabBar] = useState(false);
+    // A room is a full-screen overlay. When it closes, the message-list tabs must
+    // not inherit a stale hide request from a previously mounted Moments/gallery page.
+    useEffect(() => {
+        if (!activeSession && !activeMascot && activeTab === "messages") setHideTabBar(false);
+    }, [activeSession, activeMascot, activeTab]);
 
     // Hydrate IndexedDB → in-memory caches on mount
     useEffect(() => {
