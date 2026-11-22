@@ -6,6 +6,8 @@ export type MusicChatSharePayload = {
 
 export type XiaohongshuNoteChatSharePayload = {
     type: "xiaohongshu_note";
+    noteId?: string;
+    comments?: import("./xiaohongshu-types").XiaohongshuComment[];
     authorName: string;
     title: string;
     body: string;
