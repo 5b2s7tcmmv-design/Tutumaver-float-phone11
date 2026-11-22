@@ -1,4 +1,7 @@
 "use client";
+import {TextImage} from '@/components/media/text-image';
+import {updateChatMessage} from '@/lib/chat-storage';
+
 import { isSingleEmoji, voiceBubbleWidth } from "@/lib/chat-presentation";
 import { CHAT_PAYMENT_LABELS as PAY_UI } from "@/lib/chat-payment-labels";
 import { MusicShareCard } from "./music-share-card";
@@ -1576,6 +1579,7 @@ function ImageBubble({
             });
     }, [characterId, msg, onUpdate, promptDraft, useReferenceDraft]);
 
+    if(d?.label && d.imageSource!=='album') return <UnifiedChatImage msg={msg} onUpdate={onUpdate} characterId={characterId}/>;
     // 预览层与提示词对话框：图片正常/失败占位两种形态共用（操作按钮统一收在点开后的预览层里）
     const previewAndDialog = (
         <>
@@ -2293,6 +2297,7 @@ function MediaFileBubble({
         );
     }
 
+    if(fileType==='image' && msg.mediaData?.imageSource==='generated' && msg.mediaData.label) return <UnifiedChatImage msg={msg} onUpdate={onUpdate} characterId={characterId}/>;
     if (fileType === "image" && !url) {
         const fallbackTitle = msg.mediaData?.label?.trim() || title || "图片";
         return (
@@ -2665,3 +2670,5 @@ function VoiceMessageBubble({ msg, characterId, onUpdate, defaultTranslationExpa
 }
 
 function CitySharePhoto({reference}:{reference:string}){const [url,setUrl]=useState(reference.startsWith('asset://')?'':reference);useEffect(()=>{let live=true;if(reference.startsWith('asset://'))void import('@/lib/chat-asset-storage').then(m=>m.getChatImageFromIndexedDB(reference.slice(8))).then(v=>{if(live)setUrl(v||'');});return()=>{live=false;};},[reference]);return url?<img src={url} alt="分享日记的配图"/>:null;}
+
+function UnifiedChatImage({msg,onUpdate,characterId}:{msg:ChatMessage;onUpdate?: (m:ChatMessage)=>void;characterId?:string}){return <TextImage className="chat-photo-card" appId="chat" contentId={msg.id} prompt={msg.mediaData?.label||''} characterId={characterId} natural initialRef={msg.mediaUrl} onApply={(ref,prompt)=>{const updated=updateChatMessage(msg.id,{mediaType:'image',mediaUrl:ref,mediaData:{...msg.mediaData,label:prompt,imageSource:ref?'generated':undefined,photoLibraryId:undefined,imageGenerationStatus:ref?'generated':'text'}});if(updated){onUpdate?.(updated);window.dispatchEvent(new CustomEvent('chat-messages-updated',{detail:{sessionId:updated.sessionId,message:updated}}));}}}/>;}
