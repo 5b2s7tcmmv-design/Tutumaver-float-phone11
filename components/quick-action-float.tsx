@@ -18,11 +18,16 @@ import {
     loadBindingConfig,
     loadWorldBooks,
     saveBindingConfig,
+    saveApiConfigs,
     setCharacterBinding,
 } from "@/lib/settings-storage";
 import type { ApiConfig, BindingConfig, BindingSlot, WorldBookConfig } from "@/lib/settings-types";
 import { loadCharacters } from "@/lib/character-storage";
+import {determineBaseUrl} from "@/lib/api-helpers";
 import type { Character } from "@/lib/character-types";
+
+import {ModelCombobox} from "@/components/ui/model-combobox";
+import {saveModelList} from "@/lib/model-list-cache";
 
 type QuickScope = "global" | "character";
 type FloatingPosition = { left: number; top: number };
@@ -62,6 +67,10 @@ export function QuickActionFloat() {
     const [selectedCharId, setSelectedCharId] = useState("");
     const [config, setConfig] = useState<BindingConfig>(EMPTY_BINDING_CONFIG);
     const [apiConfigs, setApiConfigs] = useState<ApiConfig[]>([]);
+    const [modelSearch,setModelSearch]=useState("");
+    const [modelsForApi,setModelsForApi]=useState<Record<string,string[]>>({});
+    const [modelBusy,setModelBusy]=useState(false);
+    const [modelError,setModelError]=useState("");
     const [worldBooks, setWorldBooks] = useState<WorldBookConfig[]>([]);
     const [characters, setCharacters] = useState<Character[]>([]);
     const [floatingPosition, setFloatingPosition] = useState<FloatingPosition | null>(null);
@@ -117,9 +126,11 @@ export function QuickActionFloat() {
         const handleBindingsUpdated = () => reloadData();
         const handleFocus = () => reloadData();
         window.addEventListener("settings-bindings-updated", handleBindingsUpdated);
+        window.addEventListener("settings-api-configs-updated",handleBindingsUpdated);
         window.addEventListener("focus", handleFocus);
         return () => {
             window.removeEventListener("settings-bindings-updated", handleBindingsUpdated);
+            window.removeEventListener("settings-api-configs-updated",handleBindingsUpdated);
             window.removeEventListener("focus", handleFocus);
         };
     }, [enabled, reloadData]);
@@ -229,6 +240,32 @@ export function QuickActionFloat() {
             defaults: { ...binding.defaults, apiConfigId: apiConfigId || undefined },
         }));
     }, [config, persistConfig, scope, selectedCharId]);
+
+    const effectiveApiId=currentSlot.apiConfigId || (scope==="character"?config.globalDefaults.apiConfigId:undefined);
+    const selectedApi=apiConfigs.find(api=>api.id===effectiveApiId);
+    const loadQuickModels=useCallback(async()=>{
+        if(!selectedApi)return;
+        setModelBusy(true);setModelError("");
+        try{
+            const base=determineBaseUrl(selectedApi).replace(/\/$/,"").replace(/\/(chat\/completions|completions|embeddings|messages)$/i,"");
+            if(!base||!selectedApi.apiKey)throw Error("请先在 API 设置填写地址和密钥");
+            const google=selectedApi.provider==="Google";
+            const url=(/\/models$/i.test(base)?base:`${base}/models`)+(google?`?key=${encodeURIComponent(selectedApi.apiKey)}`:"");
+            const response=await fetch(url,{headers:google?{}:{Authorization:`Bearer ${selectedApi.apiKey}`}});
+            if(!response.ok)throw Error(`获取模型失败（HTTP ${response.status}）`);
+            const data=await response.json();
+            const names=(google?data.models?.map((x:{name:string})=>x.name?.replace(/^models\//, "")):data.data?.map((x:{id:string})=>x.id))||[];
+            if(!Array.isArray(names))throw Error("模型列表格式不支持");
+            saveModelList(selectedApi.id,names);
+            setModelsForApi(old=>({...old,[selectedApi.id]:[...new Set<string>(names.filter((m:unknown):m is string=>typeof m==="string"&&!!m))].sort()}));
+        }catch(error){setModelError(error instanceof Error?error.message:"拉取模型失败");}
+        finally{setModelBusy(false);}
+    },[selectedApi]);
+    const setQuickModel=useCallback((model:string)=>{
+        if(!selectedApi||!model.trim())return;
+        const next=apiConfigs.map(api=>api.id===selectedApi.id?{...api,defaultModel:model.trim()}:api);
+        saveApiConfigs(next);setApiConfigs(next);
+    },[apiConfigs,selectedApi]);
 
     const updateWorldBooks = useCallback((worldBookIds: string[]) => {
         const nextIds = worldBookIds.length > 0 ? worldBookIds : undefined;
@@ -546,6 +583,15 @@ export function QuickActionFloat() {
                             </div>
                         </section>
 
+                        <section className="quick-action-section" data-disabled={characterDisabled ? "" : undefined}>
+                            <div className="quick-action-section-heading"><span>模型 · {selectedApi?.name||"尚未选择 API"}</span></div>
+                            {selectedApi&&<div className="quick-action-model-picker">
+                                <button type="button" className="quick-action-clear-btn" disabled={modelBusy} onClick={()=>void loadQuickModels()}>{modelBusy?"拉取中…":"拉取此 API 的模型"}</button>
+                                <ModelCombobox compact apiId={selectedApi.id} value={selectedApi.defaultModel} onChange={setQuickModel}/>
+                                <small>模型选择更新该 API 配置的默认模型，所有使用此 API 的地方都会随之更新。</small>
+                                {modelError&&<small role="alert">{modelError}</small>}
+                            </div>}
+                        </section>
                         <section className="quick-action-section" data-disabled={characterDisabled ? "" : undefined}>
                             <div className="quick-action-section-heading">
                                 <span><BookOpen size={16} />世界书</span>
