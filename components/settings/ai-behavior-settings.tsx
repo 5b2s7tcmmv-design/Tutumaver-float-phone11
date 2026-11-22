@@ -1,40 +1,16 @@
-"use client";
-import { useContext, useEffect, useRef, useState } from "react";
-import { ChevronRight, X } from "lucide-react";
-import { SettingsContext } from "../phone-settings-app";
-import { loadMediaPreferences, saveMediaPreferences, MEDIA_APPS, type MediaApp, type MediaPreference, type PhotoDeliveryMode, type MediaPreferences, DEFAULT_PHOTO_DELIVERY } from "@/lib/media-preferences";
-import { DEFAULT_SCHEDULE_PROMPTS, loadSchedulePrompts, saveSchedulePrompt, type SchedulePromptKind } from "@/lib/schedule-prompt-settings";
-import { DEFAULT_THEQOO_PROMPT, loadTheqooPrompt, saveTheqooPrompt } from "@/lib/theqoo-prompt-settings";
-const options = <><option value="text">文字优先</option><option value="balanced">平衡</option><option value="free">自由判断</option></>;
-const names = { calendar: "日历日程", weverse: "Weverse 日程", theqoo: "Theqoo 论坛" };
-export function AiBehaviorSettings() {
- const { setSubpageTitle, setOverrideBack } = useContext(SettingsContext);
- const [value,setValue]=useState<MediaPreferences>(()=>loadMediaPreferences());
- const [apps,setApps]=useState(false);
- const [editing,setEditing]=useState<SchedulePromptKind|"theqoo"|null>(null);
- const [draft,setDraft]=useState("");
- const [notice,setNotice]=useState("");
- const editor=useRef<HTMLTextAreaElement>(null);
- useEffect(()=>{setSubpageTitle(apps?"应用单独设置":"AI 行为");setOverrideBack(editing?()=>()=>setEditing(null):apps?()=>()=>setApps(false):null);return()=>{setSubpageTitle(null);setOverrideBack(null);};},[apps,editing,setSubpageTitle,setOverrideBack]);
- useEffect(()=>{if(!editing)return;const previous=document.activeElement as HTMLElement|null;editor.current?.focus();const close=(e:KeyboardEvent)=>{if(e.key==="Escape")setEditing(null);};window.addEventListener("keydown",close);return()=>{window.removeEventListener("keydown",close);previous?.focus();};},[editing]);
- const update=(next:MediaPreferences)=>{setValue(next);saveMediaPreferences(next);};
- return <div className="ai-behavior-page flex flex-col gap-4">
- {!apps ? <>
- <section><p className="settings-menu-section-title">内容偏好</p><div className="settings-option-group">
- <label className="ai-media-row"><span>AI 配图倾向</span><select value={value.global} onChange={e=>update({...value,global:e.target.value as MediaPreference})}>{options}</select></label>
- <button type="button" className="ai-media-row" onClick={()=>setApps(true)}>应用单独设置<ChevronRight size={16}/></button></div>
- <p className="menu-desc ai-media-note">配图倾向决定 AI 想不想发照片；各平台的图片处理方式决定缺图时是否自动生图。两者互不影响。</p></section>
- <section><p className="settings-menu-section-title">内容生成提示词</p><div className="settings-option-group">{(["calendar","theqoo"] as const).map(kind=><button key={kind} className="ai-media-row" type="button" onClick={()=>{setDraft(kind==="theqoo"?loadTheqooPrompt():loadSchedulePrompts()[kind]);setEditing(kind);setNotice("");}}><span>{names[kind]}<small className="menu-desc settings-row-description">{kind==="calendar"?"工作、兴趣、私人安排与公开节点":"论坛选题、网友生态与评论风格"}</small></span><ChevronRight size={16}/></button>)}</div><p className="menu-desc ai-media-note">修改内容方向，下次生成时生效。已有内容保持不变。</p></section>
- </> : <div className="settings-option-group">{Object.entries(MEDIA_APPS).map(([id,label]) => <div key={id} className="ai-media-platform-settings">
-   <label className="ai-media-row"><span>{label} · 配图倾向</span><select value={value.apps[id as MediaApp]||"inherit"} onChange={e=>{const next={...value.apps};if(e.target.value==="inherit")delete next[id as MediaApp];else next[id as MediaApp]=e.target.value as MediaPreference;update({...value,apps:next});}}><option value="inherit">跟随全局</option>{options}</select></label>
-   <label className="ai-media-row"><span>{label} · 缺图处理</span><select value={value.delivery[id as MediaApp] || DEFAULT_PHOTO_DELIVERY[id as MediaApp]} onChange={e=>update({...value,delivery:{...value.delivery,[id]:e.target.value as PhotoDeliveryMode}})}><option value="text">优先文字图 · 可手动生图</option><option value="auto">自动生图 · 失败保留文字</option></select></label>
- </div>)}</div>}
- {notice && <p role="status" className="menu-desc ai-media-note">{notice}</p>}
- {editing && <div className="modal-overlay settings-prompt-overlay" onClick={()=>setEditing(null)}><section role="dialog" aria-modal="true" aria-labelledby="schedule-prompt-title" className="modal-dialog settings-prompt-dialog" onClick={e=>e.stopPropagation()} onKeyDown={e=>{if(e.key!=="Tab")return;const nodes=e.currentTarget.querySelectorAll<HTMLElement>('button,textarea');const first=nodes[0],last=nodes[nodes.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}}>
- <div className="settings-dialog-heading"><h3 id="schedule-prompt-title">{names[editing]}提示词</h3><button type="button" aria-label="关闭" onClick={()=>setEditing(null)}><X size={20}/></button></div>
- <p className="menu-desc ai-media-note">编辑事件构思与内容风格。保存后用于下一次生成。</p>
- <textarea ref={editor} className="ui-input settings-prompt-text" aria-label="内容生成提示词" value={draft} maxLength={editing==="theqoo"?6000:16000} onChange={e=>setDraft(e.target.value)}/>
- <div className="settings-prompt-actions"><button type="button" className="ui-btn ui-btn-outline" onClick={()=>setDraft(editing==="theqoo"?DEFAULT_THEQOO_PROMPT:DEFAULT_SCHEDULE_PROMPTS[editing])}>恢复默认</button><button type="button" className="ui-btn ui-btn-primary" disabled={!draft.trim()} onClick={()=>{if(editing==="theqoo")saveTheqooPrompt(draft);else saveSchedulePrompt(editing,draft);setEditing(null);setNotice("提示词已保存，下次生成时生效。");}}>保存</button></div>
- </section></div>}
- </div>;
+'use client';
+import {useContext,useEffect,useState} from 'react';
+import {SettingsContext} from '../phone-settings-app';
+import {ImagePromptLanguageSetting} from './image-prompt-language-setting';
+import {TextImageMaskSetting} from './text-image-mask-setting';
+import {loadCharacters} from '@/lib/character-storage';
+import {loadPhotoLibrary,setPhotoLibraryPreferences} from '@/lib/photo-library-storage';
+import {loadMediaPreferences,saveMediaPreferences,loadMediaScopes,saveMediaScopes,MEDIA_APPS,type MediaScope,type MediaPreference} from '@/lib/media-preferences';
+const intents=<><option value="none">纯文字</option><option value="text">文字优先</option><option value="balanced">平衡</option><option value="free">多发图</option></>;
+const sources=<><option value="album_only">仅相册 · 缺图拒绝</option><option value="album_then_generated">相册优先 · 缺图文字图</option><option value="generated_only">不检索相册 · 仅文字图</option></>;
+export function AiBehaviorSettings(){const {setSubpageTitle}=useContext(SettingsContext);const [value,setValue]=useState(loadMediaPreferences);const [scopes,setScopes]=useState(loadMediaScopes);const [photos,setPhotos]=useState(()=>loadPhotoLibrary().preferences);const [actor,setActor]=useState('');const characters=loadCharacters();
+ useEffect(()=>{setSubpageTitle('图片设置');return()=>setSubpageTitle(null);},[setSubpageTitle]);
+ function change(section:'global'|'apps'|'actors'|'actorApps',key:string,patch:MediaScope){if(section==='apps'&&Object.hasOwn(patch,'intent')){const apps={...value.apps};delete apps[key as keyof typeof MEDIA_APPS];const v={...value,apps};setValue(v);saveMediaPreferences(v);}const next={...scopes,[section]:section==='global'?{...scopes.global,...patch}:{...scopes[section],[key]:{...scopes[section][key],...patch}}};setScopes(next);saveMediaScopes(next);}
+ function rows(section:'global'|'apps'|'actors'|'actorApps',key:string,label:string,current:MediaScope){return <div className="ai-media-platform-settings"><label className="ai-media-row"><span>{label} · 配图倾向</span><select value={current.intent||'inherit'} onChange={e=>change(section,key,{intent:e.target.value==='inherit'?undefined:e.target.value as MediaPreference})}><option value="inherit">跟随上级</option>{intents}</select></label><label className="ai-media-row"><span>{label} · 来源策略</span><select value={current.source||'inherit'} onChange={e=>change(section,key,{source:e.target.value==='inherit'?undefined:e.target.value as MediaScope['source']})}><option value="inherit">跟随上级</option>{sources}</select></label></div>;}
+ return <div className="ai-behavior-page flex flex-col gap-4"><TextImageMaskSetting/><ImagePromptLanguageSetting/><section className="settings-option-group"><label className="ai-media-row"><span>全局配图倾向</span><select value={value.global} onChange={e=>{const next={...value,global:e.target.value as MediaPreference};setValue(next);saveMediaPreferences(next);}}>{intents}</select></label><label className="ai-media-row"><span>全局来源策略</span><select value={scopes.global.source||photos.importedStrategy} onChange={e=>change('global','',{source:e.target.value as MediaScope['source']})}>{sources}</select></label></section><p className="menu-desc ai-media-note">需要新图片时先显示文字图，点生成后预览，使用后才替换。已授权且匹配的相册照片直接使用。</p><details className="settings-option-group"><summary className="ai-media-row">应用单独设置</summary>{Object.entries(MEDIA_APPS).map(([id,label])=><div key={id}>{rows('apps',id,label,{intent:value.apps[id as keyof typeof MEDIA_APPS],...scopes.apps[id]})}</div>)}</details><section className="settings-option-group"><label className="ai-media-row"><span>角色单独设置</span><select value={actor} onChange={e=>setActor(e.target.value)}><option value="">选择角色</option>{characters.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>{actor&&<><label className="ai-media-row"><span>引入角色相册</span><input type="checkbox" checked={photos.enabledCharacterIds.includes(actor)} onChange={e=>{const ids=e.target.checked?[...photos.enabledCharacterIds,actor]:photos.enabledCharacterIds.filter(id=>id!==actor);setPhotoLibraryPreferences({enabledCharacterIds:ids});setPhotos(loadPhotoLibrary().preferences);}}/></label>{rows('actors',actor,'该角色',scopes.actors[actor]||{})}<details><summary className="ai-media-row">该角色在各应用中的设置</summary>{Object.entries(MEDIA_APPS).map(([id,label])=><div key={id}>{rows('actorApps',actor+':'+id,label,scopes.actorApps[actor+':'+id]||{})}</div>)}</details></>}</section></div>;
 }
