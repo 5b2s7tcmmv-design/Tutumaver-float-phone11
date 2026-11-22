@@ -1,4 +1,5 @@
 "use client";
+import {loadApiConfigs} from "@/lib/settings-storage";
 import { RecommendContactModal } from "./recommend-contact-modal";
 import { introductionCandidates, introduceContact } from "@/lib/contact-introduction";
 import {markMediaSent, prepareSocialMedia} from '@/lib/social-media';
@@ -44,6 +45,10 @@ import { generateChatCompletion, generateOfflineChatCompletion, flattenCompletio
 import { offlineSpeakerMap } from "@/lib/offline-speakers";
 import { RotateCcw, Volume2 } from "lucide-react";
 import { OfflineDialogueText } from "./offline-dialogue-text";
+import {OfflineImageAttachment,OfflineImageComposeDialog,OfflinePendingImage} from "./offline-image-attachment";
+import {OfflineMusicFloat} from "./offline-music-float";
+import {loadOfflineImageDraft,saveOfflineImageDraft} from "@/lib/chat-offline-storage";
+import {offlineMusicContext} from "@/lib/offline-music-state";
 import { OfflineIcon } from "./offline-icons";
 import { offlineTextCount } from "@/lib/offline-dialogue";
 import { OfflineSceneClock, requestOfflineSceneAction, OfflineSceneControls } from "./offline-scene-controls";
@@ -82,14 +87,14 @@ import { GiftPickerModal } from "./gift-picker-modal";
 import { ConfirmDialog } from "@/components/ui/modal";
 import { loadBindingConfig, loadPresets, loadRegexes, resolveBinding, resolveUserIdentity, USER_IDENTITIES_UPDATED_EVENT } from "@/lib/settings-storage";
 import { generateGroupChatCompletion, generateGroupOfflineChatCompletion, parseGroupChatResponse, buildEditableGroupRoundText } from "@/lib/group-chat-engine";
-import { loadChatOfflineSceneState, ensureChatOfflineScene, appendChatOfflineTurn, deleteChatOfflineTurn, deleteChatOfflineTurnsFrom, extractThinkingTag, loadChatOfflineTurns, parseOfflineResponse, saveChatOfflineTurns, updateChatOfflineTurn, type ChatOfflineTurn } from "@/lib/chat-offline-storage";
+import { loadChatOfflineSceneState, ensureChatOfflineScene, appendChatOfflineTurn, deleteChatOfflineTurn, deleteChatOfflineTurnsFrom, extractThinkingTag, loadChatOfflineTurns, parseOfflineResponse, saveChatOfflineTurns, updateChatOfflineTurn, type ChatOfflineTurn, type ChatOfflineImage } from "@/lib/chat-offline-storage";
 import { applyDisplayRegex, applyEditRegex } from "@/lib/llm-prompt-assembler";
 import { scheduleFollowUp, cancelFollowUp, cancelBackgroundGeneration, isBackgroundReplyGenerating } from "@/lib/follow-up-service";
 import { useKeyboardDismissAutoSend } from "@/components/chat/use-keyboard-dismiss-auto-send";
 import { cancelBailoutKey } from "@/lib/push-bailout-client";
 import { PENDING_REPLY_PREFIX } from "@/lib/friend-request-engine";
 import type { UserIdentity } from "@/components/settings/user-identity";
-import { AlertCircle, Blocks, CalendarDays, Share, List, Pencil, Check, Trash2, User, ChevronLeft, ChevronRight, Clapperboard, Clock, Gift, Languages, Loader2, MoreHorizontal, X } from "lucide-react";
+import { AlertCircle, Blocks, CalendarDays, Share, List, Pencil, Check, Trash2, User, ChevronLeft, ChevronRight, Clapperboard, Clock, Gift, Languages, Loader2, MoreHorizontal, X, ImagePlus } from "lucide-react";
 import { setDebugChatState } from "@/lib/debug-store";
 import { SessionCustomCSS } from "@/components/ui/session-custom-css";
 import { setChatActive } from "@/lib/music-action-queue";
@@ -1071,6 +1076,7 @@ const LegacyOfflineTextInputBar = memo(forwardRef<OfflineTextInputHandle, {
     onToggleEmojiPanel: () => void;
     onSendText: (text: string) => boolean;
     onStopGeneration: () => void;
+    onInsertImage?: () => void;
 }>(function LegacyOfflineTextInputBar({
     isOfflineGenerating,
     sceneBusy = false,
@@ -1221,9 +1227,11 @@ const LegacyOfflineTextInputBar = memo(forwardRef<OfflineTextInputHandle, {
         </div>
     );
 }));
-const OfflineTextInputBar = memo(forwardRef<OfflineTextInputHandle, React.ComponentProps<typeof LegacyOfflineTextInputBar>>(function OfflineTextInputBar(props, ref) {
+const OfflineTextInputBar = memo(forwardRef<OfflineTextInputHandle, React.ComponentProps<typeof LegacyOfflineTextInputBar> & {hasPendingImage?:boolean}>(function OfflineTextInputBar(props, ref) {
     const [text, setText] = useState(""); const current = useRef("");
     const [dialogue, setDialogue] = useState(false);
+    const composer=useRef<HTMLDivElement>(null);
+    useEffect(()=>{const el=composer.current;if(!el)return;const host=el.closest<HTMLElement>('.chat-room-wrapper');const measure=()=>host?.style.setProperty('--offline-composer-height',`${el.offsetHeight}px`);const ro=new ResizeObserver(measure);ro.observe(el);measure();return()=>ro.disconnect();},[]);
     const textarea = useRef<HTMLTextAreaElement | null>(null);
     const pendingCaret = useRef<number | null>(null);
     useLayoutEffect(() => { const el = textarea.current; if (el && pendingCaret.current !== null) { const caret = pendingCaret.current; pendingCaret.current = null; el.focus(); el.setSelectionRange(caret, caret); syncSelection(); } }, [text]);
@@ -1242,12 +1250,13 @@ const OfflineTextInputBar = memo(forwardRef<OfflineTextInputHandle, React.Compon
         if (next === value) { el.focus(); el.setSelectionRange(caret, caret); syncSelection(); }
         else { pendingCaret.current = caret; update(next); }
     }
-    function send() { if (props.sceneBusy) return; if (props.isOfflineGenerating) { props.onStopGeneration(); return; } const value = current.current.trim(); if ((value || props.isSpectator) && props.onSendText(value)) { update(""); setDialogue(false); } }
-    return <div className="chat-input-bar chat-room-main-pane offline-composer" data-ui="input" data-offline-composer="true">
-        <button type="button" aria-label="返回线上模式" title="返回线上模式" disabled={props.isOfflineGenerating || props.sceneBusy} onClick={props.onToggleOfflineMode}><OfflineIcon kind="online" /></button>
+    function send() { if (props.sceneBusy) return; if (props.isOfflineGenerating) { props.onStopGeneration(); return; } const value = current.current.trim(); if ((value || props.hasPendingImage || props.isSpectator) && props.onSendText(value)) { update(""); setDialogue(false); } }
+    return <div ref={composer} className="chat-input-bar chat-room-main-pane offline-composer" data-ui="input" data-offline-composer="true">
+        <button type="button" className="offline-composer-online" aria-label="返回线上模式" title="返回线上模式" disabled={props.isOfflineGenerating || props.sceneBusy} onClick={props.onToggleOfflineMode}><OfflineIcon kind="online" /></button>
         <textarea ref={textarea} className="chat-input-textarea" rows={1} value={text} enterKeyHint="enter" disabled={props.sceneBusy || props.isSpectator} placeholder={dialogue ? "写下说出口的话…" : "写下此刻…"} onChange={e => { update(e.target.value); }} onSelect={syncSelection} />
-        <button type="button" aria-label="快捷添加语音台词" title="快捷添加语音台词" aria-pressed={dialogue} disabled={props.sceneBusy || props.isSpectator} onPointerDown={e => e.preventDefault()} onClick={toggleDialogue}><Volume2 size={23} /></button>
-        <button type="button" aria-label={props.isOfflineGenerating ? "停止线下生成" : "发送"} title={props.isOfflineGenerating ? "停止线下生成" : "发送"} disabled={props.sceneBusy || (!props.isOfflineGenerating && !props.isSpectator && !text.trim())} onClick={send}>{props.isOfflineGenerating ? <X size={23} /> : <OfflineIcon kind="send" />}</button>
+        <button type="button" className="offline-composer-image" aria-label="插入线下图片" title="插入图片" disabled={props.isOfflineGenerating || props.sceneBusy || props.isSpectator} onClick={()=>props.onInsertImage?.()}><ImagePlus size={21}/></button>
+        <button type="button" className="offline-composer-speech" aria-label="快捷添加语音台词" title="快捷添加语音台词" aria-pressed={dialogue} disabled={props.sceneBusy || props.isSpectator} onPointerDown={e => e.preventDefault()} onClick={toggleDialogue}><Volume2 size={23} /></button>
+        <button type="button" className="offline-composer-send" aria-label={props.isOfflineGenerating ? "停止线下生成" : "发送"} title={props.isOfflineGenerating ? "停止线下生成" : "发送"} disabled={props.sceneBusy || (!props.isOfflineGenerating && !props.isSpectator && !props.hasPendingImage && !text.trim())} onClick={send}>{props.isOfflineGenerating ? <X size={23} /> : <OfflineIcon kind="send" />}</button>
     </div>;
 }));
 
@@ -1276,6 +1285,12 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
     const [offlineSceneBusy, setOfflineSceneBusy] = useState(false);
     const [theaterMode, setTheaterMode] = useState(() => kvGet(CHAT_THEATER_MODE_PREFIX + session.id) === "1");
     const [offlineTurns, setOfflineTurns] = useState<ChatOfflineTurn[]>([]);
+    const [offlineImageTarget,setOfflineImageTarget]=useState<{turnId:string;role:"user"|"assistant"}|null>(null);
+    const [offlineImageDialog,setOfflineImageDialog]=useState(false);
+    const [pendingOfflineImage,updatePendingOfflineImage]=useState<ChatOfflineImage|null>(()=>loadOfflineImageDraft(session.id));
+    const setPendingOfflineImage=(image:ChatOfflineImage|null)=>{saveOfflineImageDraft(session.id,image);updatePendingOfflineImage(image);};
+    useEffect(()=>{updatePendingOfflineImage(loadOfflineImageDraft(session.id));},[session.id]);
+
     const [offlineVisibleCount, setOfflineVisibleCount] = useState(OFFLINE_INITIAL_LOAD);
     const [pendingOfflineUserText, setPendingOfflineUserText] = useState("");
     const [isOfflineGenerating, setIsOfflineGenerating] = useState(false);
@@ -4565,8 +4580,8 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
 
     const formatOfflineTurnXml = useCallback((turn: ChatOfflineTurn): string => formatOfflineTurnXmlShared(turn), []);
 
-    const buildOfflinePromptHistory = (turns: ChatOfflineTurn[], pendingUserContent: string): ChatMessage[] =>
-        buildOfflinePromptHistoryShared(session, turns, pendingUserContent);
+    const buildOfflinePromptHistory = (turns: ChatOfflineTurn[], pendingUserContent: string, pendingImage?:ChatOfflineImage): ChatMessage[] =>
+        buildOfflinePromptHistoryShared(session, turns, pendingUserContent, pendingImage);
     const getOfflineCopyText = (turn: ChatOfflineTurn, role: OfflineActionTarget["role"]): string => {
         if (role === "user") return turn.userContent;
         return formatOfflineTurnXml(turn);
@@ -4697,8 +4712,12 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             return false;
         }
         const currentText = inputText.trim();
-        if (!currentText && !(session.isGroup && session.isSpectator)) return false;
+        if (!currentText && !pendingOfflineImage && !(session.isGroup && session.isSpectator)) return false;
 
+        if(pendingOfflineImage?.usage!=="decoration"&&pendingOfflineImage?.ref&&pendingOfflineImage.recognition!=="manual"){
+            const slot=resolveBinding(loadBindingConfig(),session.isGroup?undefined:session.contactId,session.isGroup?"group_chat":"chat");
+            if(!loadApiConfigs().find(c=>c.id===slot.apiConfigId)?.enableImageRecognition){showChatToast("当前 API 未开启识图，请重新添加图片并选择手动识图");return false;}
+        }
         cancelFollowUp(session.id);
         setShowPlusMenu(false);
         setShowEmojiPanel(false);
@@ -4715,7 +4734,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
 
         void (async () => {
             try {
-                const history = buildOfflinePromptHistory(offlineTurns, currentText);
+                const history = buildOfflinePromptHistory(offlineTurns, currentText + offlineMusicContext(session.id), pendingOfflineImage||undefined);
                 const onOfflineDelta = (delta: string) => {
                     if (!isCurrentOfflineRun()) return;
                     offlineStreamAccumRef.current += delta;
@@ -4755,8 +4774,12 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                     reasoningText: result.reasoning,
                     thinkingText: result.thinking,
                     thinkingTag: result.thinkingTag,
+                    userImage: pendingOfflineImage?.targetRole!=="assistant"?pendingOfflineImage||undefined:undefined,
+                    assistantImage: pendingOfflineImage?.targetRole==="assistant"?pendingOfflineImage:undefined,
                 });
+                setPendingOfflineImage(null);
                 setOfflineTurns(prev => [...prev, saved]);
+
             } catch (error: any) {
                 if (!isCurrentOfflineRun() || isAbortLikeError(error)) return;
                 offlineTextInputRef.current?.setText(currentText);
@@ -5322,6 +5345,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             >
                 <div className="flex">
                     <button onClick={() => { copyTextToClipboard(getOfflineCopyText(turn, role)); setActiveOfflineTarget(null); }} className="ctx-menu-btn">复制</button>
+                    <button onClick={()=>{setOfflineImageTarget({turnId:turn.id,role});setOfflineImageDialog(true);setActiveOfflineTarget(null);}} className="ctx-menu-btn">为这一轮配图</button>
                     <button onClick={() => handleOfflineEditStart(turn, role)} className="ctx-menu-btn">编辑</button>
                     <button onClick={() => void handleOfflineRetryFrom(turn.id)} className="ctx-menu-btn">重回本段</button>
                 </div>
@@ -5917,9 +5941,20 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
     // 这样缩小为悬浮窗时聊天页与通话组件可以同时挂载，通话状态（计时/字幕）不会丢失。
 
     const OfflineComposer = OfflineTextInputBar;
+    const offlineImageRecent=offlineTurns.flatMap((turn,index)=>[
+      ...(turn.userContent.trim()?[{turnId:turn.id,role:"user" as const,label:`#${index*2+1} · 我的内容${turn.userImage?"（替换图片）":""}`}]:[]),
+      ...(turn.assistantContent.trim()?[{turnId:turn.id,role:"assistant" as const,label:`#${index*2+2} · 角色内容${turn.assistantImage?"（替换图片）":""}`}]:[])
+    ]).slice(-30).reverse();
+    const setOfflineImage=(target:{turnId:string;role:"user"|"assistant"},image:ChatOfflineImage)=>{
+      if(target.turnId==="__next__") {setPendingOfflineImage({...image,targetRole:target.role});return;}
+      const field=target.role==="user"?"userImage":"assistantImage";
+      const updated=updateChatOfflineTurn(session.id,target.turnId,{[field]:image});
+      if(updated){setOfflineTurns(previous=>previous.map(turn=>turn.id===target.turnId?updated:turn));}
+    };
     const offlineFooter = (turn: ChatOfflineTurn, role: "user" | "assistant", index: number) => <div className="offline-card-footer" onPointerDown={e => e.stopPropagation()}>
         <span title="记录时间；故事时间可通过时钟单独调整">#{index} · {offlineTextCount(role === "user" ? turn.userContent : turn.assistantContent)}字 · {formatChatUiTime(turn.createdAt)}</span>
         <div>{role === "assistant" ? <OfflineSceneClock sessionId={session.id} disabled={isOfflineGenerating || offlineSceneBusy} /> : null}
+        <button type="button" aria-label="为此条线下内容配图" title="配图" disabled={isOfflineGenerating || offlineSceneBusy} onClick={()=>{setOfflineImageTarget({turnId:turn.id,role});setOfflineImageDialog(true);}}><ImagePlus size={15}/></button>
         <button type="button" aria-label={role === "user" ? "编辑我的线下内容" : "编辑角色线下内容"} disabled={isOfflineGenerating || offlineSceneBusy} onClick={() => handleOfflineEditStart(turn, role)}><Pencil size={15} /></button>
         {(role === "assistant" || !turn.assistantContent.trim()) ? <button type="button" aria-label="重回线下回复" title="重回整段回复" disabled={isOfflineGenerating || offlineSceneBusy} onClick={() => void handleOfflineRetryFrom(turn.id)}><RotateCcw size={15}/></button> : null}
         <button type="button" aria-label={role === "user" ? "删除我的线下内容" : "删除角色线下内容"} disabled={isOfflineGenerating || offlineSceneBusy} onClick={() => {
@@ -5929,6 +5964,10 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         }}><Trash2 size={15} /></button></div>
     </div>;
 
+    // Replacing a card creates a fresh image revision. Edits of an existing card preserve its original prompt.
+    const createOfflineImage=(target:{turnId:string;role:"user"|"assistant"},image:ChatOfflineImage)=>{
+      setOfflineImage(target,{...image,id:`image_${Date.now()}_${Math.random().toString(36).slice(2,7)}`});
+    };
     const chatRoomBackgroundStyle = bgImageResolved ? {
         backgroundColor: "#fff",
         backgroundImage: `url(${bgImageResolved})`,
@@ -6056,6 +6095,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                                         {activeOfflineTarget?.turnId === turn.id && activeOfflineTarget.role === "user" && renderOfflineContextMenu(turn, "user")}
                                         <OfflineDialogueText text={offlineDisplay.userContent} role="user" characterId={session.contactId} speakers={offlineSpeakers} defaultExpanded={session.collapseBilingualTranslation === false} />
                                     </div>
+                                    {turn.userImage&&<OfflineImageAttachment image={turn.userImage} turnId={turn.id} role="user" characterId={session.contactId} onChange={image=>setOfflineImage({turnId:turn.id,role:"user"},image)}/>}
                                     {offlineFooter(turn, "user", (offlineTurns.indexOf(turn) * 2) + 1)}
                                 </div>
                                 <div className="chat-offline-entry" data-role="assistant" style={offlineDisplay.assistantContent.trim() ? undefined : { display: "none" }}>
@@ -6121,6 +6161,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                                         {activeOfflineTarget?.turnId === turn.id && activeOfflineTarget.role === "assistant" && renderOfflineContextMenu(turn, "assistant")}
                                         <OfflineDialogueText text={offlineDisplay.assistantContent} role="assistant" characterId={session.contactId} speakers={offlineSpeakers} defaultExpanded={session.collapseBilingualTranslation === false} />
                                     </div>
+                                    {turn.assistantImage&&<OfflineImageAttachment image={turn.assistantImage} turnId={turn.id} role="assistant" characterId={session.contactId} onChange={image=>setOfflineImage({turnId:turn.id,role:"assistant"},image)}/>}
                                     {offlineFooter(turn, "assistant", (offlineTurns.indexOf(turn) * 2) + 2)}
                                 </div>
                             </div>
@@ -6829,13 +6870,17 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                     </button>
                 </div>
             )}
+            {offlineMode&&!isMultiSelectMode&&<OfflineMusicFloat sessionId={session.id}/>}
+            {offlineImageDialog&&<OfflineImageComposeDialog allowNext={!offlineImageTarget} key={`${session.id}:${offlineImageTarget?.turnId||"new"}:${offlineImageTarget?.role||"user"}`} target={offlineImageTarget} recent={offlineImageRecent} session={session} characterId={session.contactId} onClose={()=>setOfflineImageDialog(false)} onCreate={createOfflineImage}/>}
             {screenshot&&<ChatScreenshotPreview blob={screenshot} onClose={()=>setScreenshot(null)}/>}
             {favoriteVoice && <VoiceFavoriteDialog key={favoriteVoice.sourceKey} draft={favoriteVoice} onClose={()=>setFavoriteVoice(null)} onSaved={()=>showChatToast("已保存到设置 → 语音收藏")}/>}
             {manualDialog && <ManualCallDialog count={selectedMessageIds.size} onClose={()=>setManualDialog(false)} onSave={(callType,duration)=>{
                 const ids=Array.from(selectedMessageIds);saveManualCallGroup({id:`manual_call_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,sessionId:session.id,messageIds:ids,callType,duration});setManualGroups(loadManualCallGroups());setManualDialog(false);setIsMultiSelectMode(false);setSelectedMessageIds(new Set());
             }}/>}
+            {offlineMode&&pendingOfflineImage&&!isMultiSelectMode&&<OfflinePendingImage disabled={isOfflineGenerating} image={pendingOfflineImage} onRemove={()=>setPendingOfflineImage(null)} onTargetChange={role=>setPendingOfflineImage({...pendingOfflineImage,targetRole:role})}/>}
             {!isMultiSelectMode && (offlineMode ? (
                 <OfflineComposer
+                    hasPendingImage={!!pendingOfflineImage}
                     sceneBusy={offlineSceneBusy}
                     key={session.id}
                     ref={offlineTextInputRef}
@@ -6847,6 +6892,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                     onCloseEmojiPanel={() => setShowEmojiPanel(false)}
                     onToggleEmojiPanel={() => { setShowEmojiPanel(!showEmojiPanel); setShowStickerPanel(false); setShowPlusMenu(false); }}
                     onSendText={handleOfflineSend}
+                    onInsertImage={()=>{setOfflineImageTarget(null);setOfflineImageDialog(true);}}
                     onStopGeneration={clearOfflineGeneration}
                 />
             ) : (
