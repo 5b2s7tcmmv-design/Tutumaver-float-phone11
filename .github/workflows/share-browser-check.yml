@@ -61,7 +61,9 @@ jobs:
         run: node scripts/check-offline-speech-scenes.cjs
       - name: Cross-app memory regression
         run: npm run check:memory
-      - name: Share source compatibility
-        run: npm run check:share
+      - name: Share Kakao and plugin compatibility
+        run: node scripts/check-share-kakao.cjs
+      - name: Share shell speech compatibility
+        run: node scripts/check-share-shell-speech.cjs
       - name: Android web bundle
         run: npm run android:web
