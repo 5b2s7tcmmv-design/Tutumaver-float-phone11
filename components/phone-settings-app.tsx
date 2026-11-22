@@ -18,6 +18,7 @@ import { VoiceFavoritesPage } from "./settings/voice-favorites-page";
 import { DataManagement } from "./settings/data-management";
 import { UserIdentitySettings } from "./settings/user-identity";
 import { AboutDeclaration } from "./settings/about-declaration";
+import { ContentPromptSettings } from "./settings/content-prompt-settings";
 import { AiBehaviorSettings } from "./settings/ai-behavior-settings";
 import { BindingManager } from "./settings/binding-manager";
 import { CloudServicesPage } from "./settings/cloud-services-setup";
@@ -64,6 +65,7 @@ type SubPage =
     | "about";
 
 const SETTINGS_MENU = [
+    { id: "contentPrompts", icon: SlidersHorizontal, label: "内容提示词", desc: "各应用内容方向与生成语言", iconColor: BINDING_ACCENTS.api, glass: "" },
     { id: "aiBehavior", icon: SlidersHorizontal, label: "AI 行为", desc: "配图偏好与日程生成提示词", iconColor: BINDING_ACCENTS.api, glass: "" },
     { id: "api", icon: HardDrive, label: "API 设置", desc: "大模型接口", iconColor: BINDING_ACCENTS.api , glass: "api" },
     { id: "voice", icon: Mic, label: "语音 API", desc: "语音合成", iconColor: BINDING_ACCENTS.voice , glass: "voice" },
@@ -304,6 +306,7 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
     const renderSubPage = () => {
         switch (currentPage) {
             case "android": return <AndroidSettings onNotice={onNotice}/>;
+            case "contentPrompts": return <ContentPromptSettings />;
             case "aiBehavior": return <AiBehaviorSettings />;
             case "api":
                 return <ApiSettings />;
