@@ -1,4 +1,5 @@
 "use client";
+import {PresetModuleControls} from "./preset-module-controls";
 
 import { useState, useEffect, useContext, type CSSProperties } from "react";
 import {
@@ -1168,6 +1169,7 @@ export function BindingManager() {
                     <section className="flex flex-col gap-3">
                         <p className="settings-menu-section-title">Character Defaults</p>
                         {renderCharacterSlotCards()}
+                        <PresetModuleControls characterId={selectedCharId}/>
                     </section>
 
                     <section className="flex flex-col gap-3">
@@ -1226,6 +1228,7 @@ export function BindingManager() {
                             includeVoice: false,
                             translationOnly: false,
                         })}
+                        {appBindingScope !== "global" && <PresetModuleControls characterId={selectedCharId} appId={selectedAppId||undefined}/>}
                         {selectedAppId === "theqoo" && <p className="binding-priority-note">文本 API、预设和世界书用于论坛内容生成；翻译 API 用于用户帖子与评论补译。</p>}
                     </section>
 
