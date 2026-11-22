@@ -211,3 +211,11 @@ export function photoTraitsTextForCharacter(photo: PhotoRecord, characterId?: st
   if ((photo.people ?? []).length > 1) return "";
   return appearanceToText(photo.appearance);
 }
+
+/** User-triggered offline recognition shares the existing Photos API binding, without adding photos to the library. */
+export async function describeOfflinePhoto(dataUrl:string):Promise<string>{
+ const config=resolvePhotoVisionApi();
+ if(!config||!config.enableImageRecognition)throw Error('请先在相册识图 API 配置中开启图像识别');
+ const raw=await sendLLMRequest(config,null,[{role:'user',content:[{type:'text',text:'请用中文客观描述这张图片中可见的人物、衣着、物品和场景。不要猜测身份或不可见事实，不续写剧情，只返回画面描述。'},{type:'image_url',image_url:{url:dataUrl,detail:'auto'}}]}],[],undefined,{skipOutputRegex:true,appId:'photos',appTags:['photos','vision']});
+ if(!raw.trim())throw Error('识图没有返回可用描述');return raw.trim().slice(0,16000);
+}
