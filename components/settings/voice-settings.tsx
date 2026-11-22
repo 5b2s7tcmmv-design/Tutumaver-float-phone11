@@ -69,6 +69,8 @@ const DEFAULT_FISH_AUDIO_MODELS = [
     { id: "s2.1-pro", name: "s2.1-pro" },
 ];
 const DEFAULT_ELEVENLABS_MODELS = [
+    { id: "eleven_v4_turbo", name: "Eleven v4 Turbo · 语音模型" },
+    { id: "eleven_v4", name: "Eleven v4 · 丰富表达" },
     { id: "eleven_multilingual_v2", name: "Multilingual v2 · 多语言" },
     { id: "eleven_flash_v2_5", name: "Flash v2.5 · 快速响应" },
     { id: "eleven_v3", name: "Eleven v3 · 丰富表达" },
@@ -836,7 +838,7 @@ export function VoiceSettings() {
                                                     />
                                                 </div>
                                                 <div className="flex flex-col gap-1">
-                                                    <div className="flex items-center justify-between gap-2"><label className="menu-desc ml-1">语音模型 (TTS Model)</label>{config.provider === "ElevenLabs" && <button type="button" className="ui-btn ui-btn-ghost" disabled={modelLoading[config.id]} onClick={() => void syncModels(config)}><RefreshCw size={14} className={modelLoading[config.id] ? "animate-spin" : ""}/>{modelLoading[config.id] ? "读取中" : "读取模型"}</button>}</div>
+                                                    <div className="flex items-center justify-between gap-2"><label className="menu-desc ml-1">语音模型 (TTS Model)</label><button type="button" className="ui-btn ui-btn-ghost" onClick={() => setManualModelIds(prev => ({ ...prev, [config.id]: !prev[config.id] }))}>{manualModelIds[config.id] ? "下拉选择" : "手动填写"}</button>{config.provider === "ElevenLabs" && <button type="button" className="ui-btn ui-btn-ghost" disabled={modelLoading[config.id]} onClick={() => void syncModels(config)}><RefreshCw size={14} className={modelLoading[config.id] ? "animate-spin" : ""}/>{modelLoading[config.id] ? "读取中" : "读取模型"}</button>}</div>
                                                     {modelErrors[config.id] && <span className="menu-desc text-[var(--c-danger)]">{modelErrors[config.id]}</span>}
                                                     {manualModelIds[config.id] ? (
                                                         <div className="flex gap-2">
@@ -859,7 +861,7 @@ export function VoiceSettings() {
                                                         </div>
                                                     ) : (
                                                         <select
-                                                            value={(config.provider === "ElevenLabs" ? (fetchedModels[config.id] || DEFAULT_ELEVENLABS_MODELS) : DEFAULT_FISH_AUDIO_MODELS).some(m => m.id === config.model) ? config.model : "__manual__"}
+                                                            value={config.model || ""}
                                                             onChange={(e) => {
                                                                 if (e.target.value === "__manual__") {
                                                                     setManualModelIds(prev => ({ ...prev, [config.id]: true }));
@@ -869,6 +871,7 @@ export function VoiceSettings() {
                                                             }}
                                                             className="ui-select"
                                                         >
+                                                            {!(config.provider === "ElevenLabs" ? (fetchedModels[config.id] || DEFAULT_ELEVENLABS_MODELS) : DEFAULT_FISH_AUDIO_MODELS).some(m => m.id === config.model) && <option value={config.model || ""}>{config.model ? `${config.model} · 当前自定义模型` : "请选择模型"}</option>}
                                                             {(config.provider === "ElevenLabs" ? (fetchedModels[config.id] || DEFAULT_ELEVENLABS_MODELS) : DEFAULT_FISH_AUDIO_MODELS).map(model => (
                                                                 <option key={model.id} value={model.id}>{model.name}</option>
                                                             ))}
