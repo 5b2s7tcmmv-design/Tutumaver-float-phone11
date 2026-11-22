@@ -7,11 +7,10 @@ import type { RegexConfig } from "./settings-types";
 import { stripHallucinatedTimestamps } from "./llm-provider-adapter";
 import { MacroEngine } from "./macro-engine";
 import { getActiveAppTags } from "./content-tag-utils";
-import { loadChatMessages, loadChatSessions, reindexSessionMessageOrdersByTime } from "./chat-storage";
+import { loadChatMessages, loadChatSessions } from "./chat-storage";
 import { hasAccountPushSubscription } from "./push-client";
-import { isPersonalPushCloudActive, loadPersonalPushCloudState, personalPushFetch } from "./personal-push-cloud";
+import { isPersonalPushCloudActive, personalPushFetch } from "./personal-push-cloud";
 import { removeTimedWakeSchedule } from "./timed-wake-storage";
-import { loadScreenChatSettings, saveScreenChatAck } from "./screen-chat-storage";
 
 type OutboxEntry = {
     id: string;
@@ -61,7 +60,7 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
     if (consuming) return;
     if (options?.force !== true && Date.now() - lastConsumeAt < OUTBOX_FOREGROUND_CHECK_INTERVAL_MS) return;
     // 没有任何设备订阅推送时，服务端不可能产生普通离线回传；避免所有在线用户空轮询。
-    if (!loadScreenChatSettings().enabled && !(await hasAccountPushSubscription())) return;
+    if (!(await hasAccountPushSubscription())) return;
     consuming = true;
     lastConsumeAt = Date.now();
     const passStartMs = Date.now();
@@ -89,70 +88,11 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
                     }
                     const meta = entry.meta || {};
 
-                    if ((meta as { kind?: string }).kind === "bridge" && (meta as {screenChat?: boolean}).screenChat === true) {
-                        const bridgeMeta = meta as Record<string, unknown> & {
-                            reply?: { sessionId?: string; regexes?: RegexConfig[]; characterName?: string; userName?: string; appId?: string; appTags?: string[] } | null;
-                            screenChat?: boolean;
-                            screenChatCharacterId?: string;
-                            screenChatSequence?: number;
-                            screenChatResponseBatchId?: string;
-                            screenChatAssistantAt?: string;
-                        };
-                        const replyMeta = bridgeMeta.reply || null;
-                        const replySessionId = replyMeta?.sessionId || "";
-                        if (entry.raw_text.trim() && replySessionId) {
-                            const responseBatchId = typeof bridgeMeta.screenChatResponseBatchId === "string"
-                                ? bridgeMeta.screenChatResponseBatchId
-                                : undefined;
-                            const existing = loadChatMessages(replySessionId);
-                            const alreadyImported = Boolean(
-                                responseBatchId && existing.some(message => message.responseBatchId === responseBatchId),
-                            );
-                            if (!alreadyImported) {
-                                let text = stripHallucinatedTimestamps(entry.raw_text.trim());
-                                const regexes = Array.isArray(replyMeta?.regexes) ? replyMeta.regexes : [];
-                                if (regexes.length > 0) {
-                                    const macroEngine = new MacroEngine(replyMeta?.characterName ?? "", replyMeta?.userName ?? "用户");
-                                    const activeTags = getActiveAppTags(replyMeta?.appId ?? "chat", { appTags: replyMeta?.appTags });
-                                    text = applyOutputRegex(text, regexes, { macroEngine, activeTags });
-                                }
-                                const { hasVisible, newCount, stateValues } = await parseAndSaveResponse(
-                                    text,
-                                    replySessionId,
-                                    0,
-                                    undefined,
-                                    existing,
-                                    {
-                                        silent: options?.silent !== false,
-                                        responseBatchId,
-                                        createdAt: bridgeMeta.screenChatAssistantAt,
-                                    },
-                                );
-                                if (hasVisible && newCount < 10) scheduleFollowUp(replySessionId, newCount, stateValues);
-                            }
-                            if (bridgeMeta.screenChat === true) reindexSessionMessageOrdersByTime(replySessionId);
-                        }
-                        if (
-                            bridgeMeta.screenChat === true
-                            && typeof bridgeMeta.screenChatCharacterId === "string"
-                            && Number.isSafeInteger(bridgeMeta.screenChatSequence)
-                        ) {
-                            saveScreenChatAck(bridgeMeta.screenChatCharacterId, Number(bridgeMeta.screenChatSequence));
-                        }
+                    // Ignore and acknowledge orphaned legacy bridge/screen-chat outbox entries.
+                    // Normal Chat offline messages below remain unchanged.
+                    if (["bridge", "shortcut_delivery_error"].includes(String((meta as { kind?: string }).kind ?? ""))) {
                         consumedIds.push(entry.id);
                         if (entry.trigger_key) handledTriggerKeys.add(entry.trigger_key);
-                        continue;
-                    }
-                    // 云端触发快捷动作失败的诊断行：角色已经说了"我去看一眼"却什么
-                    // 都没发生，写进现实桥动态让用户查得到原因。这是一条独立的
-                    // outbox 行（云端在投递之后才写），不是角色消息——消费掉即可，
-                    // 绝不能走下面的建消息流程，否则聊天里会凭空多出一条。
-                    if ((meta as { kind?: string }).kind === "shortcut_delivery_error") {
-                        const detail = typeof meta.shortcutDeliveryError === "string"
-                            ? meta.shortcutDeliveryError
-                            : entry.raw_text;
-                        // Removed reality-bridge feed; diagnostic events remain consumed without injecting chat messages.
-                        consumedIds.push(entry.id);
                         continue;
                     }
                     const sessionId = meta.sessionId || entry.session_id || "";
@@ -231,8 +171,6 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
                     if (entry.trigger_key) handledTriggerKeys.add(entry.trigger_key);
                 } catch (err) {
                     console.warn("[PushOutbox] merge failed for entry:", entry.id, err);
-                    // 屏幕速聊各轮有严格因果顺序；前一轮未合并时不能越过它消费后一轮。
-                    if ((entry.meta as { screenChat?: boolean } | null)?.screenChat === true) break;
                 }
             }
 
@@ -261,7 +199,7 @@ export function installServerOutboxConsumer(): void {
     consumerInstalled = true;
 
     // 启动时保留 5 分钟节流；回前台和 SW 明确告知新消息时强制补拉。
-    // iOS 会在后台冻结页面，如果回前台仍被节流，屏幕速聊消息只能等到下次重启才会合并。
+    // iOS 会在后台冻结页面，回前台需强制补拉普通 Chat 离线消息。
     const requestConsume = (force = false) => {
         if (consumeRequestTimer !== null) window.clearTimeout(consumeRequestTimer);
         consumeRequestTimer = window.setTimeout(() => {
@@ -279,15 +217,6 @@ export function installServerOutboxConsumer(): void {
             requestConsume(true);
             return;
         }
-        if (event.data?.type === "run_shortcut" && typeof event.data.url === "string") {
-            const url: string = event.data.url;
-            // 站点线的 /shortcut-run 票据地址、个人线的同源转发路由，
-            // 或个人云网关自己的 run 入口
-            const personal = loadPersonalPushCloudState();
-            const allowed = url.startsWith(`${window.location.origin}/shortcut-run`)
-                || url.startsWith(`${window.location.origin}/personal-shortcut-run?`)
-                || (personal !== null && url.startsWith(`${personal.url}/functions/v1/ai-phone-push?action=run&`));
-            if (allowed) window.location.href = url;
-        }
+
     });
 }
