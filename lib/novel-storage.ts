@@ -1,3 +1,4 @@
+import {loadContentLanguage,type ContentLanguage} from './content-language';
 import {kvGet,kvSet,registerKvMigration} from './kv-db';
 export const NOVEL_NPC_AVATAR='/npc-default-avatar.png';
 export const NOVEL_KEY='ai_phone_novelnow_v1';registerKvMigration(NOVEL_KEY);
@@ -9,7 +10,7 @@ export type NovelComment={id:string;author:string;text:string;zh?:string;at:numb
 export type NovelChapter={id:string;title:string;titleZh?:string;text:string;zh?:string;translations?:Record<string,{title:string;text:string}>;published:boolean;previous?:{title:string;text:string;zh?:string};comments:NovelComment[];at:number};
 export type NovelBook={id:string;title:string;titleZh?:string;author:string;originLanguage?:string;description:string;descriptionZh?:string;cover:string;mine:boolean;saved:boolean;finished:boolean;spec:NovelSpec;styleSnapshot?:NovelStyle;outline:string;summary:string;state:string;threads:string;contextDirty?:boolean;chapters:NovelChapter[];reviews:NovelComment[];zoneIds:string[];at:number;updatedAt:number};
 export type NovelPost={id:string;zoneId:string;author:string;text:string;zh?:string;comments:NovelComment[];saved:boolean;liked:boolean;at:number};
-export type NovelZone={id:string;name:string;spec:NovelSpec};
+export type NovelZone={id:string;name:string;spec:NovelSpec;language?:ContentLanguage};
 export type NovelState={version:1;pen:string;bio:string;avatar:string;langs:string[];postTranslationView?:'replace'|'expand';tagGroups:Record<string,string[]>;styles:NovelStyle[];defaultStyleIds:string[];defaultRange:[number,number];books:NovelBook[];posts:NovelPost[];zones:NovelZone[];drafts:Record<string,string>};
 export function defaultNovelSpec():NovelSpec{return{people:[],supportingPeople:[],relationNotes:'',outlineHint:'',relations:[],referenceRelations:false,tags:[],exclude:[],world:'',perspective:'第三人称',tone:'',length:'短篇',totalMin:5000,totalMax:15000,min:2000,max:3500,language:'跟随系统',styleIds:[],requirements:''}}
 export function emptyNovelState():NovelState{return{version:1,pen:'未命名作者',bio:'',avatar:'',langs:['简中'],postTranslationView:'expand',tagGroups:{},styles:[],defaultStyleIds:[],defaultRange:[2000,3500],books:[],posts:[],zones:[],drafts:{}}}
@@ -26,3 +27,6 @@ export function normalizeNovelTagGroups(input:unknown):Record<string,string[]>{
 }
 export function addNovelTagGroup(groups:Record<string,string[]>,group:string,text:string):Record<string,string[]>{const tag=text.trim();if(!tag||tag.length>30)throw Error('标签请填写1—30个字');return{...groups,[group]:[...new Set([...(groups[group]||[]),tag])]};}
 export function removeNovelTagGroup(groups:Record<string,string[]>,group:string,text:string):Record<string,string[]>{return{...groups,[group]:(groups[group]||[]).filter(t=>t!==text)};}
+
+export function novelCommunityLanguage(s:NovelState,zoneId?:string):ContentLanguage{return s.zones.find(z=>z.id===zoneId)?.language||loadContentLanguage('novel');}
+export function changeNovelOriginLanguage(book:NovelBook,language:string):NovelBook{return book.originLanguage===language?book:{...book,originLanguage:language,chapters:book.chapters.map(c=>({...c,translations:undefined}))};}
