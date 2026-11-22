@@ -2,8 +2,6 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import { ChevronRight, X } from "lucide-react";
 import { SettingsContext } from "../phone-settings-app";
-import {TextImageMaskSetting} from "./text-image-mask-setting";
-import {ImagePromptLanguageSetting} from "./image-prompt-language-setting";
 import { loadMediaPreferences, saveMediaPreferences, MEDIA_APPS, type MediaApp, type MediaPreference, type PhotoDeliveryMode, type MediaPreferences, DEFAULT_PHOTO_DELIVERY } from "@/lib/media-preferences";
 import { DEFAULT_SCHEDULE_PROMPTS, loadSchedulePrompts, saveSchedulePrompt, type SchedulePromptKind } from "@/lib/schedule-prompt-settings";
 import { DEFAULT_THEQOO_PROMPT, loadTheqooPrompt, saveTheqooPrompt } from "@/lib/theqoo-prompt-settings";
@@ -22,7 +20,6 @@ export function AiBehaviorSettings() {
  const update=(next:MediaPreferences)=>{setValue(next);saveMediaPreferences(next);};
  return <div className="ai-behavior-page flex flex-col gap-4">
  {!apps ? <>
- <section><p className="settings-menu-section-title">图片设置</p><TextImageMaskSetting/><ImagePromptLanguageSetting/></section>
  <section><p className="settings-menu-section-title">内容偏好</p><div className="settings-option-group">
  <label className="ai-media-row"><span>AI 配图倾向</span><select value={value.global} onChange={e=>update({...value,global:e.target.value as MediaPreference})}>{options}</select></label>
  <button type="button" className="ai-media-row" onClick={()=>setApps(true)}>应用单独设置<ChevronRight size={16}/></button></div>
