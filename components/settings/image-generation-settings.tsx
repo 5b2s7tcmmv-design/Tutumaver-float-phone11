@@ -342,7 +342,7 @@ export function ImageGenerationSettings() {
         setStatus(null);
         setIsTesting(true);
         try {
-            const result = await generateImageFromConfiguredApi({
+            const result = await generateImageFromConfiguredApi({userInitiated:true,
                 description: settings.provider === "novelai"
                     ? "1girl, solo, upper body, white coffee cup on the wooden table, soft window light"
                     : "一张放在桌面上的白色咖啡杯，柔和自然光，真实照片风格",
@@ -492,7 +492,7 @@ export function ImageGenerationSettings() {
                     </span>
                     <span className="settings-tools-menu-copy">
                         <span className="menu-label appearance-menu-item-label">启用生图功能</span>
-                        <span className="menu-desc settings-tools-menu-desc">允许图片生成 API 被手动操作及已选择「自动生图」的平台调用；是否自动生成由 AI 行为分别控制。</span>
+                        <span className="menu-desc settings-tools-menu-desc">启用用户主动点击生成图片。AI 需要新图时先显示文字图，生成预览后由你决定是否使用。</span>
                     </span>
                     <span className="menu-right settings-tools-menu-toggle">
                         <Toggle checked={settings.enabled} onChange={(enabled) => updateSettings({ enabled })} className="settings-toggle-control" />
