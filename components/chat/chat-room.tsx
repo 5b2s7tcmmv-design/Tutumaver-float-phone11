@@ -4656,8 +4656,8 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         if ((e.target as HTMLElement).closest("button, a, input, textarea")) return;
         if (e.pointerType === "mouse" && e.button !== 0) return;
         e.preventDefault();
-        const anchor = { x: e.clientX, y: e.clientY };
-        startPosRef.current = anchor;
+        const anchor = bubbleContextAnchor(e.currentTarget as HTMLElement);
+        startPosRef.current = { x: e.clientX, y: e.clientY };
         longPressTriggeredRef.current = false;
         if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
         longPressTimerRef.current = setTimeout(() => {
@@ -6103,7 +6103,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                                                 if (dx > 10 || dy > 10) handleMessagePointerCancel();
                                             }
                                         }}
-                                        onContextMenu={(e) => { e.preventDefault(); openOfflineContextMenu({ turnId: turn.id, role: "user" }, { x: e.clientX, y: e.clientY }); }}
+                                        onContextMenu={(e) => { e.preventDefault(); openOfflineContextMenu({ turnId: turn.id, role: "user" }, bubbleContextAnchor(e.currentTarget as HTMLElement)); }}
                                         {...(activeOfflineTarget?.turnId === turn.id && activeOfflineTarget.role === "user" ? { "data-active": "" } : {})}
                                     >
                                         {activeOfflineTarget?.turnId === turn.id && activeOfflineTarget.role === "user" && renderOfflineContextMenu(turn, "user")}
@@ -6132,11 +6132,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                                                 onClick={(e) => {
                                                     e.preventDefault();
                                                     e.stopPropagation();
-                                                    const rect = e.currentTarget.getBoundingClientRect();
-                                                    openOfflineContextMenu({ turnId: turn.id, role: "assistant" }, {
-                                                        x: rect.left + rect.width / 2,
-                                                        y: rect.bottom,
-                                                    });
+                                                    openOfflineContextMenu({ turnId: turn.id, role: "assistant" }, bubbleContextAnchor(e.currentTarget as HTMLElement));
                                                 }}
                                             >
                                                 <MoreHorizontal size={16} strokeWidth={2} />
@@ -6169,7 +6165,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                                                 if (dx > 10 || dy > 10) handleMessagePointerCancel();
                                             }
                                         }}
-                                        onContextMenu={(e) => { e.preventDefault(); openOfflineContextMenu({ turnId: turn.id, role: "assistant" }, { x: e.clientX, y: e.clientY }); }}
+                                        onContextMenu={(e) => { e.preventDefault(); openOfflineContextMenu({ turnId: turn.id, role: "assistant" }, bubbleContextAnchor(e.currentTarget as HTMLElement)); }}
                                         {...(activeOfflineTarget?.turnId === turn.id && activeOfflineTarget.role === "assistant" ? { "data-active": "" } : {})}
                                     >
                                         {activeOfflineTarget?.turnId === turn.id && activeOfflineTarget.role === "assistant" && renderOfflineContextMenu(turn, "assistant")}
