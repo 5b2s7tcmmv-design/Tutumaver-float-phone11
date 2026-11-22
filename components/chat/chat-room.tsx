@@ -590,6 +590,8 @@ type OfflineActionTarget = {
 type ContextMenuAnchor = {
     x: number;
     y: number;
+    top: number;
+    bottom: number;
 };
 
 type RenderChatMessage = ChatMessage & {
@@ -1603,47 +1605,57 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         setActiveOfflineTarget(target);
     };
 
-    const getContextMenuInitialStyle = () => {
-        const anchor = contextMenuAnchor;
-        if (!anchor) return { left: 0, top: 0 };
-        return { left: anchor.x, top: Math.max(8, anchor.y - 90) };
+    const bubbleContextAnchor = (node: HTMLElement): ContextMenuAnchor => {
+        const rect = node.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, top: rect.top, bottom: rect.bottom };
     };
-
+    const getContextMenuInitialStyle = () => ({ left: 0, top: 0 });
     const positionFloatingContextMenu = (el: HTMLDivElement | null) => {
         if (!el || !contextMenuAnchor) return;
-        const margin = 8;
-        const gap = 12;
         const anchor = contextMenuAnchor;
-        const menuW = el.offsetWidth;
-        const menuH = el.offsetHeight;
-        const viewportW = window.innerWidth;
-        const viewportH = window.innerHeight;
-        let left = anchor.x - menuW / 2;
-        left = Math.max(margin, Math.min(left, viewportW - menuW - margin));
-        const placeBelow = anchor.y - menuH - gap < margin;
-        let top = placeBelow ? anchor.y + gap : anchor.y - menuH - gap;
-        top = Math.max(margin, Math.min(top, viewportH - menuH - margin));
-        el.style.left = `${left}px`;
-        el.style.top = `${top}px`;
+        const shell = wrapperRef.current?.getBoundingClientRect();
+        const visual = window.visualViewport;
+        const vp = { left: visual?.offsetLeft ?? 0, top: visual?.offsetTop ?? 0,
+            right: (visual?.offsetLeft ?? 0) + (visual?.width ?? window.innerWidth),
+            bottom: (visual?.offsetTop ?? 0) + (visual?.height ?? window.innerHeight) };
+        const margin = 8, gap = 12;
+        const bounds = { left: Math.max(vp.left, shell?.left ?? vp.left) + margin,
+            top: Math.max(vp.top, shell?.top ?? vp.top) + margin,
+            right: Math.min(vp.right, shell?.right ?? vp.right) - margin,
+            bottom: Math.min(vp.bottom, shell?.bottom ?? vp.bottom) - margin };
+        let containing: HTMLElement | null = el.parentElement;
+        while (containing) {
+            const style = window.getComputedStyle(containing);
+            if (style.transform !== "none" || style.perspective !== "none" ||
+                style.filter !== "none" || style.contain.includes("paint")) break;
+            containing = containing.parentElement;
+        }
+        const origin = containing?.getBoundingClientRect();
+        const sx = origin && containing?.offsetWidth ? origin.width / containing.offsetWidth || 1 : 1;
+        const sy = origin && containing?.offsetHeight ? origin.height / containing.offsetHeight || 1 : 1;
+        el.style.maxWidth = String(Math.max(60, bounds.right - bounds.left) / sx) + "px";
+        el.style.whiteSpace = "normal";
+        el.querySelectorAll<HTMLElement>(":scope > .flex").forEach(row => {
+            row.style.flexWrap = "wrap";
+            row.style.maxWidth = "100%";
+        });
+        const width = el.offsetWidth * sx, height = el.offsetHeight * sy;
+        const left = Math.max(bounds.left, Math.min(anchor.x - width / 2, bounds.right - width));
+        const below = anchor.top - height - gap < bounds.top && anchor.bottom + height + gap <= bounds.bottom;
+        const top = Math.max(bounds.top, Math.min(below ? anchor.bottom + gap : anchor.top - height - gap, bounds.bottom - height));
+        el.style.left = String((left - (origin?.left ?? 0)) / sx) + "px";
+        el.style.top = String((top - (origin?.top ?? 0)) / sy) + "px";
         el.style.right = "auto";
         el.style.bottom = "auto";
-        const tri = el.querySelector("[data-menu-triangle]") as HTMLElement | null;
-        if (tri) {
-            const triLeft = Math.max(14, Math.min(anchor.x - left, menuW - 14));
-            tri.style.left = `${triLeft}px`;
-            tri.style.right = "auto";
-            tri.style.transform = "translateX(-50%)";
-            if (placeBelow) {
-                tri.style.top = "-6px";
-                tri.style.bottom = "auto";
-                tri.style.borderTop = "none";
-                tri.style.borderBottom = "6px solid var(--ctx-menu-bg, #2c2c2c)";
-            } else {
-                tri.style.top = "auto";
-                tri.style.bottom = "-6px";
-                tri.style.borderBottom = "none";
-                tri.style.borderTop = "6px solid var(--ctx-menu-bg, #2c2c2c)";
-            }
+        const triangle = el.querySelector<HTMLElement>("[data-menu-triangle]");
+        if (triangle) {
+            triangle.style.left = String(Math.max(14, Math.min((anchor.x - left) / sx, el.offsetWidth - 14))) + "px";
+            triangle.style.right = "auto";
+            triangle.style.transform = "translateX(-50%)";
+            triangle.style.top = below ? "-6px" : "auto";
+            triangle.style.bottom = below ? "auto" : "-6px";
+            triangle.style.borderTop = below ? "none" : "6px solid var(--ctx-menu-bg, #2c2c2c)";
+            triangle.style.borderBottom = below ? "6px solid var(--ctx-menu-bg, #2c2c2c)" : "none";
         }
     };
 
@@ -5261,8 +5273,8 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         // Prevent text selection on long press
         e.preventDefault();
 
-        const anchor = { x: e.clientX, y: e.clientY };
-        startPosRef.current = anchor;
+        const anchor = bubbleContextAnchor(e.currentTarget as HTMLElement);
+        startPosRef.current = { x: e.clientX, y: e.clientY };
         longPressTriggeredRef.current = false;
 
         if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
@@ -6244,7 +6256,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                                             if (dx > 10 || dy > 10) handleMessagePointerCancel();
                                         }
                                     }}
-                                    onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(`vc-${vcGroup.startId}`, { x: e.clientX, y: e.clientY }); }}
+                                    onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(`vc-${vcGroup.startId}`, bubbleContextAnchor(e.currentTarget as HTMLElement)); }}
                                     onClick={() => {
                                         if (activeMessageId === `vc-${vcGroup.startId}`) return;
                                         setExpandedVoiceCallIds(prev => {
@@ -6308,7 +6320,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                                                                 if (dx > 10 || dy > 10) handleMessagePointerCancel();
                                                             }
                                                         }}
-                                                        onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(gMsg.id, { x: e.clientX, y: e.clientY }); }}
+                                                        onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(gMsg.id, bubbleContextAnchor(e.currentTarget as HTMLElement)); }}
                                                         className="chat-sys-msg relative cursor-pointer"
                                                         {...(activeMessageId === gMsg.id ? { "data-active": "" } : {})}
                                                     >
@@ -6334,7 +6346,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                                                                     if (dx > 10 || dy > 10) handleMessagePointerCancel();
                                                                 }
                                                             }}
-                                                            onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(gMsg.id, { x: e.clientX, y: e.clientY }); }}
+                                                            onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(gMsg.id, bubbleContextAnchor(e.currentTarget as HTMLElement)); }}
                                                             className={`chat-bubble-role-${gMsg.role} py-2 px-3 rounded-md break-words relative cursor-pointer`}
                                                             {...(activeMessageId === gMsg.id ? { "data-active": "" } : {})}
                                                         >
@@ -6480,7 +6492,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                                                 if (dx > 10 || dy > 10) handleMessagePointerCancel();
                                             }
                                         }}
-                                        onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(msg.id, { x: e.clientX, y: e.clientY }); }}
+                                        onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(msg.id, bubbleContextAnchor(e.currentTarget as HTMLElement)); }}
                                         className={isSystemInstruction
                                             ? "chat-system-instruction-card relative cursor-pointer"
                                             : `chat-sys-msg break-all max-w-[90%] relative cursor-pointer${blacklistEvent ? " chat-blacklist-event" : ""}${
@@ -6543,7 +6555,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                                                 if (dx > 10 || dy > 10) handleMessagePointerCancel();
                                             }
                                         }}
-                                        onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(msg.id, { x: e.clientX, y: e.clientY }); }}
+                                        onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(msg.id, bubbleContextAnchor(e.currentTarget as HTMLElement)); }}
                                         className="chat-sys-msg mx-auto relative cursor-pointer"
                                         {...(activeMessageId === msg.id ? { "data-active": "" } : {})}
                                     >
@@ -6567,7 +6579,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                                                             if (dx > 10 || dy > 10) handleMessagePointerCancel();
                                                         }
                                                     }}
-                                                    onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(msg.id, { x: e.clientX, y: e.clientY }); }}
+                                                    onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(msg.id, bubbleContextAnchor(e.currentTarget as HTMLElement)); }}
                                                     onClick={(e) => {
                                                         if (activeMessageId === msg.id) return;
                                                         e.stopPropagation();
@@ -6641,7 +6653,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                                                         if (dx > 10 || dy > 10) handleMessagePointerCancel();
                                                     }
                                                 },
-                                                onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); openMessageContextMenu(msg.id, { x: e.clientX, y: e.clientY }); },
+                                                onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); openMessageContextMenu(msg.id, bubbleContextAnchor(e.currentTarget as HTMLElement)); },
                                             } : {})}
                                             className={`chat-bubble-role-${msg.role} ${isMediaBubble ? "chat-bubble-media" : ""} ${isStandaloneHtmlPreview ? "chat-bubble-html-preview" : ""} ${renderMsg.mediaType === "music_share" ? "chat-bubble-music-share" : ""} ${renderMsg.mediaType === "gift" || renderMsg.mediaType === "image" || isStandaloneHtmlPreview ? "rounded-none" : "rounded-md"} break-words relative cursor-pointer select-none`}
                                             style={isStandaloneHtmlPreview ? STANDALONE_CARD_BUBBLE_STYLE : undefined}
