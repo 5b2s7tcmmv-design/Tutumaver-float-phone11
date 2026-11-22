@@ -47,6 +47,7 @@ type SettingsPageProps = {
 type SubPage =
     | "android"
     | "aiBehavior"
+    | "contentPrompts"
     | "main"
     | "api"
     | "voice"
