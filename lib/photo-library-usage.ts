@@ -1,3 +1,4 @@
+import {mediaScope} from "./media-preferences";
 import type { PhotoRecord, PhotoUsageChannel } from "./photo-library-types";
 
 const PRIVATE_CHANNELS = new Set<PhotoUsageChannel>(["dm_user", "moments", "bubble", "dm_char", "sms", "twitter_alt"]);
@@ -13,6 +14,8 @@ export function photoUsageLabel(channel: PhotoUsageChannel): string {
 
 /** One image may appear in several albums, but all references share this usage history. */
 export function canAutoUsePhoto(photo: PhotoRecord, _characterId: string, channel: PhotoUsageChannel, _accountId?: string): boolean {
+  const app=({dm_user:'chat',dm_char:'chat',moments:'moments',bubble:'lysn',sms:'sms',twitter_alt:'twitter',twitter_main:'twitter',wvs_artist:'weverse',wvs_official:'weverse',wvs:'weverse',other:'twitter'} as const)[channel];
+  if(mediaScope(app,_characterId).source==='generated_only')return false;
   const used = photo.usageHistory.filter(item => item.usedAt > (photo.releasedAt || 0));
   if (used.some(item => item.channel === channel)) return false;
   if (used.some(item => item.channel === "wvs_official") || (channel === "wvs_official" && used.length > 0)) return false;
