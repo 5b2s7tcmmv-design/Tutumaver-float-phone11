@@ -53,3 +53,11 @@ export function allowMediaIntent(appId: string, actorId: string, description: st
   if ((consecutive || selfieRepeat || (effectiveMediaPreference(appId) === "text" && last?.image)) && !reason?.trim()) return false;
   return true;
 }
+
+// 076: Per-app/character photo-source overrides. Preserves the share edition's existing media defaults.
+export type MediaScope={intent?:MediaPreference;source?:'album_only'|'album_then_generated'|'generated_only'};
+export type MediaScopeSettings={global:MediaScope;apps:Record<string,MediaScope>;actors:Record<string,MediaScope>;actorApps:Record<string,MediaScope>};
+const MEDIA_SCOPES_KEY='ai_phone_media_scopes_v1';registerKvMigration(MEDIA_SCOPES_KEY);
+export function loadMediaScopes():MediaScopeSettings{try{const v=JSON.parse(kvGet(MEDIA_SCOPES_KEY)||'{}');return{global:v.global||{},apps:v.apps||{},actors:v.actors||{},actorApps:v.actorApps||{}};}catch{return{global:{},apps:{},actors:{},actorApps:{}};}}
+export function saveMediaScopes(v:MediaScopeSettings){kvSet(MEDIA_SCOPES_KEY,JSON.stringify(v));}
+export function mediaScope(app:string,actor?:string):MediaScope{const v=loadMediaScopes();return{...v.global,...v.apps[app],...(actor?v.actors[actor]:{}),...(actor?v.actorApps[actor+':'+app]:{})};}
