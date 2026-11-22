@@ -1,3 +1,4 @@
+import { chatGiftSourceLabel } from "./chat-gift-label";
 import { forwardedChatPrompt } from "./chat-forward";
 import { filterUserIdentityForCharacter, scopeUserIdentity, commonUserRelationship } from "./user-knowledge";
 import { resolveUserIdentity } from "./settings-storage";
@@ -152,6 +153,7 @@ type PromptBlock = {
     marker: string;
     fromHistory?: boolean;
     liveAudio?: string;
+    imageUrls?: string[];
     imageUrl?: string;      // vision: image URL/data URL attached to this prompt block
     reasoning?: string;
     openRouterReasoningDetails?: unknown[];
@@ -578,6 +580,7 @@ function pushChronologicalShortTermBlocks(params: {
             marker: `History [${item.historyIndex}]`,
             fromHistory: true,
             imageUrl,
+            imageUrls: msg.mediaData?.snapshotImageUrls,
             liveAudio:msg.mediaData?.liveAudio,
         });
 
@@ -1047,6 +1050,7 @@ export function assemblePromptPayload(input: AssemblerInput): LLMMessage[] {
                 marker: `History [${distFromBottom}]`,
                 fromHistory: true,
                 imageUrl,
+                imageUrls: msg.mediaData?.snapshotImageUrls,
             liveAudio:msg.mediaData?.liveAudio,
             });
 
@@ -1095,11 +1099,11 @@ export function assemblePromptPayload(input: AssemblerInput): LLMMessage[] {
                !finalPayload[finalPayload.length - 1].toolCalls?.length &&
                finalPayload[finalPayload.length - 1].role !== "tool");
 
-        if (b.imageUrl) {
+        if (b.imageUrl || b.imageUrls?.length) {
             // Vision message: build multi-part content with image (never merged)
             const parts: LLMContentPart[] = [];
             if (processedText) parts.push({ type: "text", text: processedText });
-            parts.push({ type: "image_url", image_url: { url: b.imageUrl, detail: /实况视频/.test(b.text)?"high":"low" } });
+            for(const url of [...(b.imageUrl?[b.imageUrl]:[]),...(b.imageUrls||[])]) parts.push({ type: "image_url", image_url: { url, detail: /实况视频/.test(b.text)?"high":"low" } });
             if(b.liveAudio)parts.push({type:"input_audio",input_audio:{data:b.liveAudio,format:"wav"}});
             finalPayload.push({
                 role: b.role,
@@ -1198,10 +1202,10 @@ export function formatRichMediaForHistory(msg: ChatMessage, userName: string, ch
             if (d?.takeoutOrderId) return `[外卖${deliveredWhenSent ? "已送达" : "正在配送"}:${d.takeoutShop || "店铺"}:${d.takeoutItems || giftName}:${d.takeoutDestination || "用户所在地"}:${d.giftPriceLabel || ""}]`;
             if (d?.label === "外卖卡") return `[外卖${deliveredWhenSent ? "已送达" : "正在配送"}:${d.takeoutShop || d.giftMerchantLabel || "店铺"}:${d.takeoutItems || giftName}:${d.takeoutDestination || "收餐地址"}:${d.giftPriceLabel || ""}]`;
             return isGroup && d?.recipientName
-                ? `[礼物:${giftName}:${d.recipientName}]`
+                ? `[${chatGiftSourceLabel(d)}:${giftName}:${d.recipientName}]`
                 : d?.shoppingGiftId || d?.shoppingOrderId
-                    ? `[礼物${deliveredWhenSent ? "已送达" : "尚未送达"}:${giftName}:${d.recipientName || "对方"}]`
-                    : `[礼物:${giftName}]`;
+                    ? `[${chatGiftSourceLabel(d)}${deliveredWhenSent ? "已送达" : "尚未送达"}:${giftName}:${d.recipientName || "对方"}]`
+                    : `[${chatGiftSourceLabel(d)}:${giftName}]`;
         }
         case "payment_request":
             return formatShoppingPaymentRequestHistory({
@@ -1260,6 +1264,7 @@ export function formatRichMediaForHistory(msg: ChatMessage, userName: string, ch
                 title: d?.xiaohongshuTitle,
                 body: d?.xiaohongshuBody,
                 description: d?.xiaohongshuDescription,
+                comments: d?.xiaohongshuComments,
             });
         case "accept_red_packet":
             if (isGroup && d?.claimer && d?.owner) return `[${d.claimer}领取了${d.owner}的红包]`;
@@ -1772,6 +1777,7 @@ function pushGroupChronologicalShortTermBlocks(params: {
             marker: `History [${item.historyIndex}]`,
             fromHistory: true,
             imageUrl,
+            imageUrls: msg.mediaData?.snapshotImageUrls,
             liveAudio:msg.mediaData?.liveAudio,
         });
     });
@@ -1802,6 +1808,7 @@ export function assembleGroupPromptPayload(input: GroupAssemblerInput): LLMMessa
     const userIdentity = rawUserIdentity ? scopeUserIdentity(rawUserIdentity, commonUserRelationship(members.map(m => currentCharacters.find(c=>c.id===m.character.id) || m.character),rawUserIdentity.id)) : rawUserIdentity;
     const resolvedUserName = userIdentity?.name || userName;
     const blocks: PromptBlock[] = [];
+    blocks.push({ role: "system", depth: 0, order: 100000, marker: "group_finance_rules", text: "群聊只支持红包和指定收款人的转账，不支持代付、礼物和外卖。拼手气红包发起人也可领取，每人一次，份数领完即可有人没领到；无需安排全员自动争抢，不得输出退回群红包。领取金额由系统按真实币种分配，禁止自己指定或编造领取金额。转账只有收款人可以收款或拒收。群内音乐卡、APP快照是全体成员可阅读的共同分享内容，按各自已有认知理解，不因分享暴露作者隐藏身份。" });
     const timeAware = resolveTimeAware(input.timeAware);
     const groupTimeContext = input.timeContext
         ?? buildGroupTimeContext(members.map(member => ({
@@ -2258,6 +2265,7 @@ export function assembleGroupPromptPayload(input: GroupAssemblerInput): LLMMessa
                 marker: `History [${distFromBottom}]`,
                 fromHistory: true,
                 imageUrl,
+                imageUrls: msg.mediaData?.snapshotImageUrls,
             liveAudio:msg.mediaData?.liveAudio,
             });
         });
@@ -2285,11 +2293,11 @@ export function assembleGroupPromptPayload(input: GroupAssemblerInput): LLMMessa
             !finalPayload[finalPayload.length - 1].toolCalls?.length &&
             finalPayload[finalPayload.length - 1].role !== "tool";
 
-        if (b.imageUrl) {
+        if (b.imageUrl || b.imageUrls?.length) {
             // Vision message: build multi-part content with image (never merged)
             const parts: LLMContentPart[] = [];
             if (processedText) parts.push({ type: "text", text: processedText });
-            parts.push({ type: "image_url", image_url: { url: b.imageUrl, detail: /实况视频/.test(b.text)?"high":"low" } });
+            for(const url of [...(b.imageUrl?[b.imageUrl]:[]),...(b.imageUrls||[])]) parts.push({ type: "image_url", image_url: { url, detail: /实况视频/.test(b.text)?"high":"low" } });
             if(b.liveAudio)parts.push({type:"input_audio",input_audio:{data:b.liveAudio,format:"wav"}});
             finalPayload.push({
                 role: b.role,
