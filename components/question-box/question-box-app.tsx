@@ -1,4 +1,5 @@
 "use client";
+import {openSharedChatSession} from "@/lib/chat-notification-events";
 import {useSnapshotNavigation} from "@/lib/shared-snapshot-navigation";
 import { AppNotificationSetting, useSocialNotices } from "@/components/social/app-notifications";
 import { readSocialTarget } from "@/lib/social-notifications";
