@@ -1,3 +1,4 @@
+import {contentPrompt} from './content-prompt-settings';
 import { fixedRelationshipInstruction } from "./character-relationship";
 import { translateContentTexts } from "./content-translation";
 import { sendLLMRequest } from "./chat-engine";
@@ -22,7 +23,7 @@ async function ask(prompt: string, characterId?: string, publicOnly = false) {
   const configs = loadApiConfigs();
   const api = configs.find(row => row.id === slot.apiConfigId) || configs.find(row => row.apiKey?.trim());
   if (!api?.apiKey?.trim()) throw new Error("请先配置小手机文字 API。");
-  const preset = loadPresets().find(row => row.id === slot.presetId) || null;
+  const preset = loadPresets(characterId).find(row => row.id === slot.presetId) || null;
   const world = loadWorldBooks().filter(row => slot.worldBookIds?.includes(row.id)).map(row => `${row.name}：${row.entries.filter(entry => !entry.disable).map(entry => entry.content).join("；")}`).join("\n").slice(0, 4000);
   const shortTerm = characterId && !publicOnly ? prepareShortTermContext(characterId, "question_box", { tokenBudgetOverride: 1800 }) : null;
   const memoryConfig = characterId && !publicOnly ? loadMemoryConfig() : null;
@@ -76,7 +77,7 @@ export async function generateBoxQuestions(session: BoxSession, count: number, e
   const previous = session.questions.slice(-14).map(row => row.text).join("；");
   const topic = session.topic ? `本期主题「${session.topic}」，问题应围绕主题但角度多样。` : "没有指定主题，问题题材自然多样。";
   const recipient = session.ownerId === "user" ? `U（${user?.name || "用户"}）。身份介绍：${[user?.bio, user?.customSettings].filter(Boolean).join("；").slice(0, 650)}。候选角色（允许部分角色提问，也允许陌生人提问）：${roster || "本期没有参与的角色，只能由陌生人提问"}。` : `${owner?.name || "角色"}。人设：${owner?.persona.slice(0, 1800) || "无"}。只能由虚构陌生人提问，不能代 U 发问。`;
-  const result = await ask(`你在为一期开着的提问箱新增恰好 ${count} 个问题。收件人：${recipient}${topic}已有问题避免重复：${previous || "无"}。全部问题正文必须写自然中文，不得写韩语或日语。问题可围绕近期事件、世界背景、人设、已公开行程、作品、公开事项、传闻和普通生活，也允许质疑、尖锐、玩笑和不讨好的问题，避免统一夸赞或每题恋爱。传闻保留不确定性，不能当事实；匿名提问者不知道未公开行程和私人秘密。尊重公开与私密边界。每位候选角色只能依据自己的人设和经历提问，不得借用其他候选角色独有的聊天或秘密。发问人全部匿名，绝不在前端露出姓名。${excludeUser ? "这一批不能出现 U 的问题。" : ""}只输出 {"questions":[{"text":"中文问题","senderId":"若 U 的收件箱且确有角色发问，填写上面候选角色的准确 ID；陌生人填空字符串"}]}。`, session.ownerId === "user" ? undefined : session.ownerId, true);
+  const result = await ask((`你在为一期开着的提问箱新增恰好 ${count} 个问题。收件人：${recipient}${topic}已有问题避免重复：${previous || "无"}。全部问题正文必须写自然中文，不得写韩语或日语。问题可围绕近期事件、世界背景、人设、已公开行程、作品、公开事项、传闻和普通生活，也允许质疑、尖锐、玩笑和不讨好的问题，避免统一夸赞或每题恋爱。传闻保留不确定性，不能当事实；匿名提问者不知道未公开行程和私人秘密。尊重公开与私密边界。每位候选角色只能依据自己的人设和经历提问，不得借用其他候选角色独有的聊天或秘密。发问人全部匿名，绝不在前端露出姓名。${excludeUser ? "这一批不能出现 U 的问题。" : ""}只输出 {"questions":[{"text":"中文问题","senderId":"若 U 的收件箱且确有角色发问，填写上面候选角色的准确 ID；陌生人填空字符串"}]}。`) + contentPrompt('question_box.questions') + '\n固定语言：全部问题正文必须简体中文。只有陌生人遵守以上内容方向；候选角色仍依自身人设提问。', session.ownerId === "user" ? undefined : session.ownerId, true);
   const rows = Array.isArray(result.questions) ? result.questions : [];
   const valid = rows.slice(0, count).flatMap(value => {
     if (!value || typeof value !== "object") return [];
