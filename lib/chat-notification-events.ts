@@ -27,3 +27,10 @@ export function dispatchOpenAddContact(characterId: string): void {
   if (typeof window === "undefined" || !characterId) return;
   window.dispatchEvent(new CustomEvent(CHAT_OPEN_ADD_CONTACT_EVENT, { detail: { characterId } }));
 }
+
+export const CHAT_OPEN_SHARED_SESSION_EVENT = "ai-chat-open-shared-session";
+
+export function openSharedChatSession(sessionId: string): void {
+  window.dispatchEvent(new CustomEvent("chat-messages-updated", { detail: { sessionId } }));
+  window.dispatchEvent(new CustomEvent(CHAT_OPEN_SHARED_SESSION_EVENT, { detail: { sessionId } }));
+}
