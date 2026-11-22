@@ -36,6 +36,7 @@ on:
       - "lib/text-image-storage.ts"
       - "lib/elevenlabs-models.ts"
       - "scripts/check-resource076-music.cjs"
+      - "scripts/check-offline-speech-scenes.cjs"
   workflow_dispatch:
 jobs:
   validate:
