@@ -1,5 +1,5 @@
-import { shareWeverseReplayToChat } from "@/lib/weverse-replay-share";
 "use client";
+import { shareWeverseReplayToChat } from "@/lib/weverse-replay-share";
 
 import { useAppBack } from "@/lib/back-navigation";
 import { AppNotificationSetting } from "@/components/social/app-notifications";
