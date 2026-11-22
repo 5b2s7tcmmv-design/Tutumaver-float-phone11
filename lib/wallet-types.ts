@@ -17,7 +17,7 @@ export type WalletCard = {
 
 export type WalletAccountType = "balance" | "card";
 
-export type WalletTransactionKind = "transfer_in" | "transfer_out" | "payment" | "refund" | "adjustment";
+export type WalletTransactionKind = "transfer_in" | "transfer_out" | "payment" | "refund" | "adjustment" | "currency_exchange";
 
 export type WalletTransaction = {
   id: string;
@@ -35,6 +35,8 @@ export type WalletTransaction = {
   originalCurrency?: WalletCurrency;
   originalAmount?: number;
   exchangeRate?: number;
+  exchangeToCurrency?: WalletCurrency;
+  exchangeToAmount?: number;
   relatedMessageId?: string;
   source?: "generated" | "manual" | "app";
   credit?: boolean;
