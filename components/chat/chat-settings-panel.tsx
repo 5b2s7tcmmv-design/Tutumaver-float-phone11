@@ -1,4 +1,5 @@
 "use client";
+import {OfflineMusicIconSetting} from "./offline-music-icon-setting";
 
 import { loadCallFirstSpeaker, saveCallFirstSpeaker, type CallFirstSpeaker } from "@/lib/call-first-speaker";
 import {InspectionPermissionSettings} from "./inspection-permission-settings";
@@ -40,6 +41,7 @@ import {
     type GroupAdminAction,
 } from "@/lib/group-admin";
 import { clearChatOfflineTurns } from "@/lib/chat-offline-storage";
+
 import { canSetGroupNickname, groupMemberAvatar, groupMemberName } from "@/lib/group-chat-profile";
 import { removeChatSessionCompletely } from "@/lib/chat-session-remove";
 import { triggerBlacklistReaction, triggerDeleteFriendReaction } from "@/lib/friend-request-engine";
@@ -482,6 +484,7 @@ export function ChatSettingsPanel({
     // 流式生成：按会话区分（线上/线下），存 ChatSession 字段，默认关
     const [streamOnline, setStreamOnline] = useState(session.streamOnline === true);
     const [streamOffline, setStreamOffline] = useState(session.streamOffline === true);
+
     const defaultBilingualPrompt = session.isGroup ? DEFAULT_GROUP_CHAT_BILINGUAL_PROMPT : DEFAULT_CHAT_BILINGUAL_PROMPT;
     const defaultOfflineBilingualPrompt = session.isGroup ? DEFAULT_GROUP_OFFLINE_CHAT_BILINGUAL_PROMPT : DEFAULT_OFFLINE_CHAT_BILINGUAL_PROMPT;
     const [bilingualTranslationPrompt, setBilingualTranslationPrompt] = useState(session.bilingualTranslationPrompt || defaultBilingualPrompt);
@@ -1588,6 +1591,7 @@ export function ChatSettingsPanel({
                                 />
                             </div>
                         </div>
+                        {!session.isGroup&&<OfflineMusicIconSetting/>}
                         {session.isGroup ? (
                         <div className="menu-item">
                             <ChatInfoIcon icon={Sparkles} color={BINDING_ACCENTS.preset} />
