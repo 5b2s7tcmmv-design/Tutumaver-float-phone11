@@ -38,3 +38,32 @@ export function formatXiaohongshuShareForPrompt(input: {
     const description = compactShareText(input.description, "");
     return `分享了一条小红书帖子，作者：${author}, 标题：${title}, 正文内容：${body}，图片/视频描述：${description || "无"}`;
 }
+
+export function xiaohongshuShareMessage(sessionId: string, share: XiaohongshuNoteChatSharePayload) {
+    const content = formatXiaohongshuShareForPrompt({
+        author: share.authorName,
+        title: share.title,
+        body: share.body,
+        description: share.description,
+        comments: share.comments,
+    });
+    return {
+        sessionId,
+        role: "user" as const,
+        content,
+        mediaType: "xiaohongshu_note_share" as const,
+        mediaData: {
+            xiaohongshuNoteId: share.noteId,
+            xiaohongshuComments: share.comments?.map(comment=>({...comment})),
+            xiaohongshuAuthor: share.authorName,
+            xiaohongshuTitle: share.title,
+            xiaohongshuBody: share.body,
+            xiaohongshuDescription: share.description,
+            xiaohongshuNoteType: share.noteType,
+            xiaohongshuTags: share.tags,
+            xiaohongshuImageAssetId: share.imageAssetId,
+            xiaohongshuCoverIcon: share.coverIcon,
+            xiaohongshuTone: share.tone,
+        },
+    };
+}
