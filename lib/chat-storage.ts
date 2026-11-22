@@ -1,4 +1,5 @@
 import { autoArchiveEndedCall } from './chat-call-archives';
+import { chatGiftSourceLabel } from './chat-gift-label';
 import type { SocialMedia } from './social-media';
 import {restoreChatListEntry} from './chat-list-entry';
 import type { ForwardedChatRecord } from "./chat-forward";
@@ -207,12 +208,15 @@ export type ChatMessage = {
         senderName?: string;      // 转账发起人显示名（群聊）
         recipientId?: string;     // 转账收款人角色 ID
         recipientName?: string;   // 转账收款人显示名
+        snapshotSource?: { app: string; id: string; chapterId?: string };
+        packetClaims?: { recipientId: string; name: string; amount: number; transactionId: string }[];
         claimedBy?: string[];     // 群红包已领取人名列表
         claimedAmounts?: Record<string, number>; // 拼手气红包：每人领取金额
         walletTransactionId?: string; // 发送红包/转账时扣款流水
         walletRefundTransactionId?: string; // 被拒收/退回时退款流水
         walletDepositTransactionId?: string; // 领取红包/转账时入账流水
         currency?: WalletCurrency;
+        giftSource?: "shopping" | "takeout" | "warehouse";
         shoppingGiftId?: string; // 购物订单中的可送礼物实例 ID
         giftOrderId?: string;    // 礼物来源订单 ID
         giftItemId?: string;     // 礼物来源商品 ID
@@ -323,6 +327,8 @@ export type ChatMessage = {
         browserVideoSnapshot?:import("./browser-video-share").BrowserVideoSnapshot;
         browserShareOperationId?:string;
         cityDiarySnapshot?: {id?:string;createdAt?:string;translation?:string;title:string;text:string;handle:string;photos?:string[];photoDescriptions?:string[]};
+        snapshotImageUrls?: string[]; // Resolved only on the model-request copy.
+        snapshotVisionOmitted?: boolean;
         novelChapterSnapshot?: import("./shared-snapshot").NovelChapterSnapshot;
         weverseReplaySnapshot?: import("./shared-snapshot").WeverseReplaySnapshot;
         appCardBody?: string;
@@ -713,6 +719,7 @@ export function getChatMessagePreview(msg: ChatMessage): string {
         return title ? `[${appName}] ${title}` : `[${appName}]`;
     }
 
+    if (msg.mediaType === "gift") return `[${chatGiftSourceLabel(msg.mediaData)}]`;
     if (msg.mediaType) return MEDIA_PREVIEW_MAP[msg.mediaType] || `[${msg.mediaType}]`;
 
     // Silent thought/status: empty content + folded panel → "♥"
@@ -1544,6 +1551,29 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
     }
     if (newMsg.role === "assistant" && newMsg.mediaType === "gift" && newMsg.mediaData?.takeoutOrderId) {
         newMsg.mediaData = { ...newMsg.mediaData, takeoutDestination: paymentSession?.userTakeoutLocation?.trim(), recipientName: "我" };
+    }
+
+    if (paymentSession?.isGroup && (newMsg.mediaType === "payment_request" || newMsg.mediaType === "accept_payment_request" || newMsg.mediaType === "decline_payment_request")) {
+        return { ...newMsg, content: "", mediaType: undefined, mediaData: undefined, status: "rejected" };
+    }
+
+    if (paymentSession?.isGroup && newMsg.mediaType === "transfer" && newMsg.role === "assistant") {
+        const identity = resolveUserIdentity(undefined, "group_chat");
+        const name = newMsg.mediaData?.recipientName;
+        const recipient = loadCharacters().find(c => paymentSession.participantIds?.includes(c.id) && c.name === name);
+        const toUser = !paymentSession.isSpectator && !!name && [identity?.name, "你", "用户", "{{user}}"].includes(name);
+        if (!recipient && !toUser) return { ...newMsg, content: "", mediaType: undefined, mediaData: undefined, status: "rejected" };
+        newMsg.mediaData = { ...newMsg.mediaData, senderName: newMsg.senderName,
+            recipientId: recipient?.id || `user:${identity?.id || "default"}`, recipientName: recipient?.name || identity?.name || "你" };
+    }
+
+    if (paymentSession?.isGroup && newMsg.mediaType === "red_packet") {
+        const d = newMsg.mediaData || {};
+        const units = d.currency === "JPY" || d.currency === "KRW" ? 1 : 100;
+        const count = Number(d.count || 1), total = Number(d.amount || 0);
+        if (!Number.isSafeInteger(count) || count < 1 || !Number.isFinite(total) || Math.round(total * units) < count) {
+            return { ...newMsg, content: "", mediaType: undefined, mediaData: undefined, status: "rejected" };
+        }
     }
 
     // AI-created money cards and priced gifts/food use the same character ledger.
