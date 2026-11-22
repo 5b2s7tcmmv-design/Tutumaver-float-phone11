@@ -50,7 +50,7 @@ export function projectPlayChats(owner:string,payload:CheckPhoneChatPayload):Che
  return {...payload,conversations};
 }
 export function commitPlayVisit(visit:PhoneVisit){for(const row of playThreads(visit.id)){if(row.committed)continue;row.committed=true;
- if(row.messages.length&&row.isUser){const session=createOrGetSession(row.owner);for(const m of row.messages){const saved=pushChatMessage({sessionId:session.id,role:m.direction==='outgoing'?'assistant':'user',content:m.text});row.chatIds.push({session:session.id,id:saved.id});}}
+ if(row.messages.length&&row.isUser){const session=createOrGetSession(row.owner);for(const m of row.messages){if(row.chatIds.some(entry=>entry.id===m.id))continue;const saved=pushChatMessage({sessionId:session.id,role:m.direction==='outgoing'?'assistant':'user',content:m.text});row.chatIds.push({session:session.id,id:saved.id});}}
  if(row.peerId&&row.peerQuestion&&row.messages.some(m=>m.id===row.peerQuestion?.messageId)){const session=createOrGetSession(row.peerId);const msg=pushChatMessage({sessionId:session.id,role:'assistant',content:row.peerQuestion.text});row.chatIds.push({session:session.id,id:msg.id});}
  save(row);
 }}
