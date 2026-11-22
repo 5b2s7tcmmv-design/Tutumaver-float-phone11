@@ -1,4 +1,6 @@
 "use client";
+import {TextImage} from '@/components/media/text-image';
+
 import {OnceMedia} from '@/components/once-media';
 
 import { useChatUserAvatar } from "./use-chat-user-avatar";
@@ -405,7 +407,8 @@ export function MomentPostCard({ post, onUpdate, onRequestDelete, onOpenCommentC
             {/* Photo area —— 四块内容全无时整个容器不渲染：空壳会照样吃掉自己的下边距
                 （flex 容器不会自塌陷），无配图的帖子正文和时间行之间就凭空多出一截，看着像空了一行。
                 间距用 mb-3 与卡片其余部分（头像行/正文/位置）对齐，media 原本的 mb-5 是全卡唯一的孤例。 */}
-            {(post.media || userPhotos.length > 0 || resolvedPhotoUrl || fallbackPhotoDescription) && (
+            {post.photoDescription && post.photoSource!=='album' && <TextImage appId="moments" contentId={post.id} prompt={post.photoDescription} characterId={characterId} initialRef={post.photoUrl} onApply={(ref,prompt)=>{updateMomentPost(post.id,{photoUrl:ref,photoDescription:prompt,photoSource:ref?'generated':undefined,photoLibraryId:undefined,photoGenerationStatus:ref?'generated':'text'});onUpdate();}}/>}
+            {(!(post.photoDescription && post.photoSource!=='album') && (post.media || userPhotos.length > 0 || resolvedPhotoUrl || fallbackPhotoDescription)) && (
             <div className="feed-post-media mb-3 w-full flex flex-col gap-2">
                 {post.media && <OnceMedia media={post.media} mediaKey={post.id} naturalRatio/>}{userPhotos.length > 0 ? (
                     <div className="moments-post-photo-row" style={{display:"grid",gridTemplateColumns:`repeat(${userPhotos.length===4?2:Math.min(3,userPhotos.length)},minmax(0,1fr))`,maxWidth:390}}>
