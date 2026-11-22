@@ -1,3 +1,4 @@
+// Share 076: character bindings inherit preset text and override only module enabled flags.
 import {applyPresetModuleOverrides} from "./preset-module-overrides";
 import { loadCharacters, saveCharacters } from "./character-storage";
 import { scopeUserIdentity, isUserKnowledgeLevel, userKnowledgeLevel } from "./user-knowledge";
