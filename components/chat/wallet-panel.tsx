@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDownLeft, ArrowUpRight, ChevronLeft, CreditCard, Plus, RefreshCw, Settings2 } from "lucide-react";
 import { CHARACTERS_UPDATED_EVENT, loadCharacters } from "@/lib/character-storage";
 import { WalletRoleSetup } from "./wallet-role-setup";
-import { withdrawYtbIncome } from "@/lib/ytb-runtime";
 import { refreshWalletLiving, suggestWalletBase } from "@/lib/wallet-life-generation";
 import { WALLET_CURRENCIES, WALLET_UPDATED_EVENT, formatCurrencyAmount, getWalletAssetEstimate, getWalletCurrencyBalance, getWalletVisibleCurrencies, convertWalletCurrency, exchangeWalletAmount, loadWalletState, recordWalletManual, repayWalletCredit, saveWalletState, setWalletCurrencyBalance } from "@/lib/wallet-storage";
 import type { WalletCurrency, WalletState, WalletTransaction } from "@/lib/wallet-types";
@@ -79,7 +78,6 @@ export function WalletPanel({ onBack, ownerId, ownerName, readOnly = false, onRe
     if (busy || refreshLoading) return;
     setBusy(true); setError("");
     try {
-      withdrawYtbIncome(ownerId);
       if (onRefresh) await onRefresh(); else { const result = await refreshWalletLiving(ownerId); if (result.skipped) setError(`${result.skipped} 条超过可用余额，未记入流水。`); }
       setWallet(loadWalletState(ownerId)); setShowAll(false);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "刷新失败，请重试。"); }
