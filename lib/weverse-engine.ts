@@ -1,3 +1,4 @@
+import {contentPrompt} from './content-prompt-settings';
 import { LIVE_CHINESE_PROXY_RULE } from "./live-chinese-proxy";
 // Public audiences must receive only published dialogue/visible scenes; never host-private calendar or memories.
 import { loadSchedulePrompts } from "./schedule-prompt-settings";
@@ -129,7 +130,7 @@ async function resolveCharacterGeneration(characterId: string, community: Wevers
   const apiConfig = loadApiConfigs().find((item) => item.id === slot.apiConfigId) ?? loadApiConfigs()[0];
   if (!apiConfig) throw new ChatEngineError(`未给 ${character.name} 配置可用 API。`);
 
-  const presets = loadPresets();
+  const presets = loadPresets(character.id);
   let preset = slot.presetId ? presets.find((item) => item.id === slot.presetId) ?? null : null;
   if (!preset) preset = presets.find((item) => item.builtIn) ?? null;
 
@@ -269,7 +270,7 @@ async function resolveCommunityApi(community: WeverseCommunity): Promise<{ apiCo
   const slot = firstMemberId ? resolveBinding(bindings, firstMemberId, "weverse") : undefined;
   const apiConfig = loadApiConfigs().find((item) => item.id === slot?.apiConfigId) ?? loadApiConfigs()[0];
   if (!apiConfig) throw new ChatEngineError("没有可用 API，无法生成社区粉丝内容。");
-  const presets = loadPresets();
+  const presets = loadPresets(firstMemberId);
   let preset = slot?.presetId ? presets.find((item) => item.id === slot.presetId) ?? null : null;
   if (!preset) preset = presets.find((item) => item.builtIn) ?? null;
   const allRegexes = loadRegexes();
@@ -433,6 +434,8 @@ export async function generateWeverseFanBatch(
       role: "system",
       content: [
         "你在模拟一个真实的 Weverse 粉丝社区里的普通粉丝，不扮演艺人本人。",
+        contentPrompt(includePosts?'weverse.posts':'weverse.comments'),
+        targetPost?contentPrompt('weverse.comments'):'',
         `Community：${community.name}`,
         `成员：${memberNames || "未提供"}`,
         ...fanLanguageRules(loadWeverseState().settings.fanLanguagePreset),
@@ -746,7 +749,7 @@ function liveTranscriptContext(live: WeverseLive, community: WeverseCommunity, n
 
 async function publicLiveComments(community:WeverseCommunity, visible:string, count:number){
  const cfg=await resolveCommunityApi(community);
- const raw=await sendLLMRequest(cfg.apiConfig,cfg.preset,[{role:'system',content:'你只生成普通观众的直播评论。只知道已经播出的言语、可见画面和公开日历，不知道主播私下行程、心理、地点和未公开项目。不补造信息；可以不知道、问问题或根据可见线索不确定地猜测。只输出JSON {"comments":[{"displayName":"网名","original":"评论","translated":"中文翻译"}]}。'},{role:'user',content:communityTimeContext(community)+(community.chineseProxyInput !== false ? '\n'+LIVE_CHINESE_PROXY_RULE : '')+'\n已播出的片段：'+visible+'\n生成最多'+count+'条评论。'}],cfg.regexes,undefined,{appId:'weverse',skipOutputRegex:true});
+ const raw=await sendLLMRequest(cfg.apiConfig,cfg.preset,[{role:'system',content:contentPrompt('weverse.live')+fanLanguageRules(loadWeverseState().settings.fanLanguagePreset).join('\n')+'你只生成普通观众的直播评论。只知道已经播出的言语、可见画面和公开日历，不知道主播私下行程、心理、地点和未公开项目。不补造信息；可以不知道、问问题或根据可见线索不确定地猜测。只输出JSON {"comments":[{"displayName":"网名","original":"评论","translated":"中文翻译"}]}。'},{role:'user',content:communityTimeContext(community)+(community.chineseProxyInput !== false ? '\n'+LIVE_CHINESE_PROXY_RULE : '')+'\n已播出的片段：'+visible+'\n生成最多'+count+'条评论。'}],cfg.regexes,undefined,{appId:'weverse',skipOutputRegex:true});
  return normalizeLiveComments(extractJsonObject(raw)?.comments).slice(0,count);
 }
 
