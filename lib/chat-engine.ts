@@ -296,6 +296,22 @@ async function resolveVisionImageRefForApi(imageRef: string): Promise<VisionImag
 }
 
 export async function prepareVisionPromptImageMessage(msg: ChatMessage): Promise<void> {
+    const diary=msg.mediaData?.cityDiarySnapshot;
+    if(diary && !msg.mediaData?.snapshotVisionOmitted){
+        const urls:string[]=[];
+        for(const ref of diary.photos||[]){
+            const index=diary.photos!.indexOf(ref);
+            if(ref.startsWith('text://') || diary.photoDescriptions?.[index])continue;
+            try{
+                const raw=ref.startsWith('asset://')?await (await import('./chat-asset-storage')).getChatImageFromIndexedDB(ref.slice(8)):ref;
+                if(!raw)continue;
+                const result=await resolveVisionImageRefForApi(raw);
+                if('url' in result && /^(data:image\/|https?:)/.test(result.url))urls.push(result.url);
+            }catch{ /* A missing photo never prevents sending the rest of the snapshot. */ }
+        }
+        msg.mediaData={...msg.mediaData,snapshotImageUrls:urls};
+        return;
+    }
     if (msg.mediaType === "sticker") {
         if (msg.role !== "user") return;
         const stickerUrl = msg.mediaData?.stickerUrl?.trim();
@@ -310,6 +326,13 @@ export async function prepareVisionPromptImageMessage(msg: ChatMessage): Promise
     }
 
     if (!isVisionPromptImageMessage(msg) || !msg.mediaUrl) return;
+    // Offline Chat cards and manual uploads use asset:// IDs in the local image DB.
+    // Resolve them before invoking the regular vision compression pipeline.
+    if (msg.mediaUrl.startsWith("asset://")) {
+        const raw=await (await import("./chat-asset-storage")).getChatImageFromIndexedDB(msg.mediaUrl.slice(8));
+        if (!raw) { msg.mediaUrl=undefined; return; }
+        msg.mediaUrl=raw;
+    }
     const result = await resolveVisionImageRefForApi(msg.mediaUrl);
     if ("url" in result) {
         msg.mediaUrl = result.url;
@@ -319,18 +342,21 @@ export async function prepareVisionPromptImageMessage(msg: ChatMessage): Promise
 }
 
 function isVisionPromptImageMessage(msg: ChatMessage): boolean {
-    return msg.mediaType === "image"
+    return Boolean(msg.mediaData?.cityDiarySnapshot?.photos?.some((ref,index)=>!ref.startsWith("text://")&&!msg.mediaData?.cityDiarySnapshot?.photoDescriptions?.[index])&&!msg.mediaData?.snapshotVisionOmitted)
+        || msg.mediaType === "image"
         || (msg.role === "user" && msg.mediaType === "sticker" && Boolean(msg.mediaData?.stickerUrl))
         || (msg.mediaType === "media_file" && msg.mediaData?.fileType === "image");
 }
 
 function hasVisionPromptImageData(msg: ChatMessage): boolean {
+    if(msg.mediaData?.cityDiarySnapshot)return !msg.mediaData.snapshotVisionOmitted;
     return msg.mediaType === "sticker"
         ? Boolean(msg.mediaData?.stickerUrl)
         : Boolean(msg.mediaUrl);
 }
 
 function stripVisionPromptImageData(msg: ChatMessage): ChatMessage {
+    if(msg.mediaData?.cityDiarySnapshot)return {...msg,mediaData:{...msg.mediaData,snapshotVisionOmitted:true,snapshotImageUrls:undefined}};
     if (msg.mediaType === "sticker") {
         return {
             ...msg,
