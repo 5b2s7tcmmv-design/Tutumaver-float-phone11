@@ -8207,14 +8207,14 @@
 .chat-room-wrapper[data-offline-notes="true"] {
   --ii-kkt-chat-header: 0 !important;
   --offline-paper: #f2f2f7 !important; --offline-card: #ffffff !important; --offline-ink: #1c1c1e !important;
-  --offline-muted: #8e8e93 !important; --offline-gold: #b48200 !important; --offline-send: #e5b300 !important;
+  --offline-muted: #8e8e93 !important; --offline-gold: #f3ca52 !important; --offline-send: #f3ca52 !important;
   --offline-glass: rgba(255,255,255,.76) !important; --offline-border: rgba(255,255,255,.85) !important;
   --offline-shadow: 0 5px 22px rgba(30,30,35,.06) !important; --offline-check-ink: #fff !important;
   background: var(--offline-paper) !important; color: var(--offline-ink) !important;
 }
 .chat-app[data-chat-theme="dark"] .chat-room-wrapper[data-offline-notes="true"] {
   --offline-paper: #19191b !important; --offline-card: #28282b !important; --offline-ink: #eeede9 !important;
-  --offline-muted: #aaa8a1 !important; --offline-gold: #f3ca52 !important; --offline-send: #e5b300 !important;
+  --offline-muted: #aaa8a1 !important; --offline-gold: #f3ca52 !important; --offline-send: #f3ca52 !important;
   --offline-glass: rgba(53,53,56,.76) !important; --offline-border: rgba(255,255,255,.17) !important;
   --offline-shadow: 0 5px 22px rgba(0,0,0,.18) !important; --offline-check-ink: #fff !important;
 }
@@ -8268,14 +8268,7 @@
 .chat-room-wrapper[data-offline-notes="true"] .offline-card-footer > div { display:flex !important; gap:1px !important; }
 .chat-room-wrapper[data-offline-notes="true"] .offline-card-footer button { width:30px !important; height:32px !important; display:grid !important; place-items:center !important; background:transparent !important; color:var(--offline-muted) !important; padding:0 !important; border:0 !important; }
 .chat-room-wrapper[data-offline-notes="true"] .offline-card-footer button[data-paused="true"] { color:var(--offline-gold) !important; }
-/* 06 悬浮输入胶囊：返回线上、对白开关、发送；回车换行由组件处理。 */
-.chat-room-wrapper[data-offline-notes="true"] .offline-composer { position:absolute !important; left:16px !important; right:16px !important; bottom:max(10px,env(safe-area-inset-bottom,0px)) !important; width:calc(100% - 32px) !important; display:grid !important; grid-template-columns:32px minmax(0,1fr) 32px 32px !important; align-items:end !important; gap:5px !important; padding:5px 6px !important; background:var(--offline-glass) !important; border:1px solid var(--offline-border) !important; border-radius:25px !important; box-shadow:var(--offline-shadow) !important; backdrop-filter:blur(18px) saturate(115%) !important; -webkit-backdrop-filter:blur(18px) saturate(115%) !important; }
-.chat-room-wrapper[data-offline-notes="true"] .offline-composer > button { color:var(--offline-send) !important; display:grid !important; place-items:center !important; width:32px !important; height:32px !important; padding:3px !important; background:transparent !important; border:0 !important; border-radius:50% !important; }
-.chat-room-wrapper[data-offline-notes="true"] .offline-composer > button:last-child { color:var(--offline-send) !important; }
-.chat-room-wrapper[data-offline-notes="true"] .offline-composer > button[aria-pressed="true"] { background:rgba(229,179,0,.16) !important; }
 .chat-room-wrapper[data-offline-notes="true"] button:disabled { opacity:.4 !important; }
-.chat-room-wrapper[data-offline-notes="true"] .offline-composer > textarea { grid-column:2 !important; grid-row:1 !important; box-sizing:border-box !important; width:100% !important; min-height:32px !important; max-height:150px !important; margin:0 !important; padding:5px 2px !important; color:var(--offline-ink) !important; -webkit-text-fill-color:var(--offline-ink) !important; caret-color:var(--offline-gold) !important; font-size:calc(14px * var(--app-text-scale,1)) !important; line-height:22px !important; background:transparent !important; border:0 !important; box-shadow:none !important; outline:none !important; resize:none !important; border-radius:0 !important; }
-.chat-room-wrapper[data-offline-notes="true"] .offline-composer > textarea::placeholder { color:var(--offline-muted) !important; -webkit-text-fill-color:var(--offline-muted) !important; }
 /* 07 归档确认、故事时钟、归档编辑及往期列表。 */
 .chat-room-wrapper[data-offline-notes="true"] .chat-offline-scenes-dialog { position:absolute !important; inset:0 !important; z-index:100 !important; background:var(--offline-paper) !important; padding:14px !important; display:flex !important; align-items:stretch !important; justify-content:flex-start !important; overflow:hidden !important; }
 .chat-room-wrapper[data-offline-notes="true"] .chat-offline-scenes-sheet { width:100% !important; max-width:none !important; max-height:100% !important; min-height:0 !important; display:flex !important; flex-direction:column !important; gap:16px !important; overflow-y:auto !important; padding:4px 2px 20px !important; color:var(--offline-ink) !important; background:transparent !important; border:0 !important; border-radius:0 !important; }
@@ -8580,3 +8573,102 @@
 
 /* 044 approved Chat transcript menu width; keep for 045 navigation test. */
 .call039-native-chat-menu { width:108px!important; min-width:108px!important; max-width:calc(100vw - 32px)!important; }
+
+
+/* Text placeholders use the existing Chat photo width and rounding. */
+.chat-photo-card.unified-text-image{width:180px;max-width:min(180px,62vw);height:auto;min-width:0;aspect-ratio:1;border-radius:12px;overflow:hidden;box-shadow:none}
+.chat-photo-card.unified-text-image.has-image{width:auto;max-width:min(190px,62vw);border-radius:15px}
+.chat-photo-deck-card .unified-text-image,.chat-photo-deck-item .unified-text-image{width:100%;max-width:none;height:100%;aspect-ratio:auto;border-radius:inherit}
+
+/* C · Inline offline images: one horizontally cropped attachment between body and footer. */
+.chat-room-wrapper[data-offline-notes="true"] .offline-inline-image {grid-column:1 / -1!important;width:100%;min-width:0;margin-top:3px;}
+.chat-room-wrapper[data-offline-notes="true"] .offline-inline-image-preview {width:100%;height:102px;max-height:102px;min-height:0;aspect-ratio:auto!important;display:block;overflow:hidden;border-radius:14px!important;border:1px solid var(--offline-border)!important;box-shadow:none!important;position:relative;text-align:left;}
+.chat-room-wrapper[data-offline-notes="true"] .offline-inline-image-preview>img {width:100%;height:100%;object-fit:cover!important;display:block;}
+.chat-room-wrapper[data-offline-notes="true"] .offline-inline-image-preview>span {display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;padding:10px 13px;font-size:calc(12px * var(--app-text-scale,1));line-height:1.55;}
+.offline-image-primary-actions {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}
+.offline-image-primary-actions .ui-btn {min-width:0;padding:9px 3px;text-align:center;font-size:calc(12px * var(--app-text-scale,1));white-space:nowrap;}
+.offline-image-secondary-actions {display:flex;gap:13px;flex-wrap:wrap;justify-content:center;margin-top:12px;}
+.offline-image-secondary-actions button {border:0;background:none;color:var(--c-text-secondary,#888);font:inherit;font-size:calc(11px * var(--app-text-scale,1));padding:5px;}
+.offline-image-compose-overlay {z-index:1200;}
+.offline-image-compose {background:var(--offline-card,var(--c-card,#fff));border:1px solid var(--offline-border,rgba(255,255,255,.3));border-radius:24px;box-shadow:var(--offline-shadow,0 10px 35px #0002);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);display:flex;flex-direction:column;gap:12px;max-height:85vh;overflow:auto;color:var(--offline-ink,var(--c-text));}
+.offline-image-compose-heading,.offline-image-compose footer {display:flex;justify-content:space-between;align-items:center;gap:10px;}
+.offline-image-compose-heading button {border:0;background:transparent;color:inherit;padding:5px;}
+.offline-image-compose label {display:flex;flex-direction:column;gap:6px;font-size:calc(12px * var(--app-text-scale,1));}
+.offline-image-compose select,.offline-image-compose textarea {border:1px solid var(--offline-border,#aaa5);border-radius:12px;background:var(--offline-glass,var(--c-input,#eee));color:inherit;padding:10px;font:inherit;width:100%;box-sizing:border-box;}
+.offline-image-compose-choice button {width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border:1px solid var(--offline-border,#aaa5);border-radius:14px;background:var(--offline-glass,#eee);color:inherit;}
+.offline-image-compose footer button {flex:1;border:0;border-radius:13px;padding:11px;background:var(--offline-glass,#ddd);color:inherit;font:inherit;}
+.offline-image-compose footer button:last-child {background:#f3ca52;color:#19191b;}
+.offline-image-compose footer button:disabled {opacity:.45;}
+.offline-image-help {font-size:calc(11px * var(--app-text-scale,1));color:var(--offline-muted,var(--c-text-secondary));line-height:1.55;}
+
+/* Portals live under document.body, so copy the offline glass palette to their overlay. */
+.offline-image-modal,.offline-image-compose-overlay {--offline-card:#fff;--offline-ink:#1c1c1e;--offline-glass:rgba(255,255,255,.88);--offline-border:rgba(190,190,190,.5);--offline-muted:#777;--offline-shadow:0 12px 32px rgba(0,0,0,.13);}
+.offline-image-modal.offline-image-dark,.offline-image-compose-overlay.offline-image-dark {--offline-card:#28282b;--offline-ink:#eeede9;--offline-glass:rgba(53,53,56,.92);--offline-border:rgba(255,255,255,.17);--offline-muted:#aaa8a1;--offline-shadow:0 12px 34px rgba(0,0,0,.33);}
+.offline-image-modal .offline-image-editor {background:var(--offline-glass)!important;border:1px solid var(--offline-border)!important;color:var(--offline-ink)!important;border-radius:24px!important;box-shadow:var(--offline-shadow)!important;backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);}
+.offline-image-modal .offline-image-editor textarea {background:var(--offline-card)!important;color:var(--offline-ink)!important;border-color:var(--offline-border)!important;}
+.offline-image-modal .offline-image-primary-actions .ui-btn-primary {background:#f3ca52!important;color:#19191b!important;}
+.offline-image-modal .offline-image-primary-actions .ui-btn-outline {background:var(--offline-card)!important;color:var(--offline-ink)!important;border:1px solid var(--offline-border)!important;}
+.offline-image-modal .offline-image-secondary-actions button {color:var(--offline-muted)!important;}
+
+.chat-room-wrapper[data-offline-notes="true"] .offline-pending-image-marker {position:absolute;bottom:calc(max(10px,env(safe-area-inset-bottom,0px)) + 53px);right:22px;z-index:8;border:1px solid var(--offline-border);border-radius:14px;background:var(--offline-glass);color:var(--offline-ink);box-shadow:var(--offline-shadow);padding:6px 9px;display:flex;align-items:center;gap:8px;font-size:calc(11px * var(--app-text-scale,1));backdrop-filter:blur(12px);}
+.chat-room-wrapper[data-offline-notes="true"] .offline-pending-image-marker button {border:0;background:transparent;color:inherit;padding:2px;}
+/* The existing text-image editor uses a body-level portal; give the offline variant a complete, self-contained sheet layout. */
+.offline-image-modal {position:fixed!important;inset:0!important;z-index:1300!important;display:flex!important;align-items:center!important;justify-content:center!important;padding:18px!important;box-sizing:border-box;background:rgba(0,0,0,.36)!important;}
+.offline-image-modal .offline-image-editor {display:flex!important;flex-direction:column!important;gap:12px!important;padding:18px!important;box-sizing:border-box!important;width:min(100%,440px)!important;max-height:calc(100dvh - 36px)!important;overflow-y:auto!important;position:relative!important;bottom:auto!important;margin:0!important;}
+.offline-image-modal .settings-dialog-heading {display:flex!important;align-items:center;justify-content:space-between;gap:8px;}
+.offline-image-modal .settings-dialog-heading h3 {margin:0;font-size:calc(16px * var(--app-text-scale,1));font-weight:600;}
+.offline-image-modal .settings-dialog-heading button {display:grid;place-items:center;width:32px;height:32px;border:0;background:var(--offline-card);color:var(--offline-ink);border-radius:50%;}
+.offline-image-modal .offline-image-editor textarea {box-sizing:border-box;display:block;width:100%;min-height:155px;max-height:32vh;padding:12px;border-radius:14px;font-family:inherit;font-size:calc(13px * var(--app-text-scale,1));line-height:1.6;resize:vertical;}
+.offline-image-modal .unified-image-preview {display:block;max-width:100%;width:auto;height:auto;max-height:42vh;margin:0 auto;object-fit:contain;border-radius:14px;}
+.offline-image-compose-overlay {position:fixed!important;inset:0!important;display:flex!important;align-items:center!important;justify-content:center!important;padding:18px!important;box-sizing:border-box!important;background:rgba(0,0,0,.36)!important;}
+.offline-image-compose-overlay .offline-image-compose {width:min(100%,440px);max-height:calc(100dvh - 36px);position:relative!important;margin:0!important;bottom:auto!important;padding:18px!important;box-sizing:border-box;}
+
+/* C: cropped image-asset night/day skins; controls remain live DOM. */
+.offline-music-float{position:fixed;z-index:1050;max-width:calc(100vw - 18px);width:52px;isolation:isolate;font-family:var(--app-font-family,system-ui);font-size:calc(12px * var(--app-text-scale,1));transition:width .24s ease;touch-action:none}
+.offline-music-float.offline-music-pill{width:min(310px,calc(100vw - 18px))}
+.offline-music-float.offline-music-panel{width:min(345px,calc(100vw - 18px))}
+.offline-music-topline{display:flex;align-items:center;gap:0;position:relative;height:54px}
+.offline-music-note{position:relative;z-index:2;flex:none;width:54px;height:54px;border:0;background-size:100% 100%;background-repeat:no-repeat;background-color:transparent!important;cursor:grab;touch-action:none}
+.offline-music-mini{height:64px;flex:1;min-width:0;display:flex;align-items:center;gap:6px;padding:6px 13px 6px 12px;margin-left:-8px;border-style:solid;border-width:16px;border-image-slice:55 fill;border-image-width:18px;border-image-repeat:stretch;color:var(--offline-ink,#222);overflow:visible}
+.offline-music-mini-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}.offline-music-mini-info strong{font-size:calc(11px * var(--app-text-scale,1));overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.offline-music-mini-info small{font-size:calc(9px * var(--app-text-scale,1));opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.offline-music-track{height:3px;border-radius:8px;background:#9995;overflow:hidden}.offline-music-track>span{display:block;height:100%;border-radius:8px;background:#f3ca52}.offline-music-mini button{background:transparent;border:0;color:inherit;padding:5px;flex:none}
+.offline-music-panel{position:relative;box-sizing:border-box;margin-top:9px;padding:35px 21px 27px;border:24px solid transparent;border-image-slice:120 fill;border-image-width:32px;border-image-repeat:stretch;max-height:min(66vh,550px);display:flex;flex-direction:column;gap:11px;min-height:320px;overflow:hidden;color:var(--offline-ink,#222);transform-origin:top right;animation:offline-music-drop .2s ease-out}
+.offline-music-night{--offline-ink:#f2f2f5;--offline-input-bg:#1b2330b0;--offline-outline:#d6e7ff55}.offline-music-day{--offline-ink:#20222b;--offline-input-bg:#ffffffaa;--offline-outline:#7775}
+@keyframes offline-music-drop{from{opacity:.3;transform:translateY(-12px) scaleY(.93)}to{opacity:1;transform:translateY(0) scaleY(1)}}
+.offline-music-search{display:flex;gap:7px;align-items:center;padding:9px;border:1px solid var(--offline-outline);border-radius:17px;background:var(--offline-input-bg)}.offline-music-search input{flex:1;min-width:0;background:none;border:0;outline:none;color:inherit;font:inherit}.offline-music-search button{border:0;background:#f3ca52;border-radius:10px;color:#19191b;padding:5px 8px;font-size:inherit}
+.offline-music-tabs,.offline-music-actions{display:grid;grid-template-columns:1fr 1fr;gap:9px}.offline-music-tabs button{background:var(--offline-input-bg);border:1px solid var(--offline-outline);color:inherit;border-radius:14px;padding:8px;font:inherit}.offline-music-tabs button[aria-pressed="true"]{border-color:#f3ca52;box-shadow:inset 0 -2px #f3ca52}
+.offline-music-list{overflow:auto;min-height:80px;max-height:220px;overscroll-behavior:contain;touch-action:pan-y;flex:1}.offline-music-list>button{display:flex;align-items:center;gap:8px;width:100%;padding:8px 4px;border:0;border-bottom:1px solid var(--offline-outline);background:transparent;color:inherit;text-align:left;font:inherit}.offline-music-list>button.selected{background:#f3ca5230;border-radius:10px}.offline-music-list>button>span:last-child{flex:1;min-width:0}.offline-music-list strong,.offline-music-list small{display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.offline-music-list small{opacity:.65;font-size:calc(10px * var(--app-text-scale,1))}.offline-music-cover{width:36px;height:36px;border-radius:7px;overflow:hidden;display:grid;place-items:center;background:#ccc4;flex:none}.offline-music-cover img{width:100%;height:100%;object-fit:cover}.offline-music-list p,.offline-music-story-state,.offline-music-error{font-size:calc(11px * var(--app-text-scale,1));opacity:.8;line-height:1.55}.offline-music-error{color:#ec756b}
+.offline-music-actions button{border:0;border-radius:15px;padding:11px 5px;background:#f3ca52;color:#19191b;font:inherit;font-weight:600}.offline-music-actions button:first-child{background:var(--offline-input-bg);color:inherit;border:1px solid var(--offline-outline)}.offline-music-actions button:disabled{opacity:.4}.offline-music-close{position:absolute;top:8px;right:16px;border:0;background:transparent;color:inherit;padding:5px}
+@media(prefers-reduced-motion:reduce){.offline-music-float{transition:none}.offline-music-panel{animation:none}}
+
+/* C: manual image prompt from an inclusive existing floor range */
+.offline-image-floor-picker{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:end}
+.offline-image-floor-picker label{min-width:0}.offline-image-floor-picker input{width:100%;box-sizing:border-box;border:1px solid var(--offline-border,#aaa5);border-radius:12px;background:var(--offline-glass,#eee);color:inherit;padding:8px;font:inherit}
+.offline-image-floor-picker button{grid-column:1/-1;border-radius:13px;border:1px solid var(--offline-border,#aaa5);background:var(--offline-glass,#eee);color:inherit;font:inherit;padding:9px}
+/* Sheet inherits offline note style; no independent large typography or line-wrapping primary action. */
+.offline-image-compose-overlay,.offline-image-compose-overlay *{box-sizing:border-box;}
+.offline-image-compose-overlay .offline-image-compose{gap:12px!important;padding:18px!important;font-family:inherit!important;font-size:calc(13px * var(--app-text-scale,1))!important;}
+.offline-image-compose-heading{justify-content:center!important;position:relative;min-height:28px;}
+.offline-image-compose-heading strong{font-size:calc(16px * var(--app-text-scale,1));font-weight:600;}
+.offline-image-compose-heading button{position:absolute;right:0;top:0;}
+.offline-image-compose .offline-image-source-switch{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+.offline-image-compose .offline-image-source-switch button{min-width:0;white-space:nowrap;display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 5px;font:inherit;border-radius:14px;border:1px solid var(--offline-border);background:var(--offline-glass);color:var(--offline-ink);}
+.offline-image-compose .offline-image-source-switch button[aria-pressed="true"]{border-color:#F3CA52;box-shadow:inset 0 -2px #F3CA52;}
+.offline-image-compose select,.offline-image-compose textarea{width:100%;min-width:0;font-family:inherit!important;font-size:calc(13px * var(--app-text-scale,1))!important;line-height:1.5!important;}
+.offline-image-compose .offline-image-prompt-header{display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:600;}
+.offline-image-compose .offline-image-suggest-toggle{padding:5px 8px;border:0;border-radius:9px;background:var(--offline-glass);color:var(--offline-ink);font:inherit;white-space:nowrap;}
+.offline-image-compose .offline-image-floor-picker{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+.offline-image-compose .offline-image-floor-picker label{min-width:0;}
+.offline-image-compose .offline-image-floor-picker input{width:100%;min-width:0;background:var(--offline-glass);color:var(--offline-ink);border:1px solid var(--offline-border);border-radius:11px;padding:7px;}
+.offline-image-compose .offline-image-floor-picker button{grid-column:1/-1;border-radius:12px;border:0;background:var(--offline-glass);color:var(--offline-ink);font:inherit;padding:8px;}
+.offline-image-compose .offline-image-selected-file{margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--offline-muted);}
+.offline-image-compose footer{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
+.offline-image-compose footer button{width:100%;min-width:0!important;min-height:40px!important;white-space:nowrap!important;word-break:keep-all!important;font-size:calc(13px * var(--app-text-scale,1))!important;padding:8px 5px!important;}
+.offline-image-round-inputs{display:flex;align-items:center;gap:5px;flex-wrap:nowrap;}
+.offline-image-round-inputs label{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:calc(10px * var(--app-text-scale,1));}
+.offline-image-round-inputs input{width:49px;max-width:49px;min-width:0;padding:5px 2px;border:1px solid var(--c-input-border,#bbb5);border-radius:9px;background:var(--c-card);color:var(--c-text);text-align:center;font:inherit;}
+/* Music float is rendered through a body-level portal. Keep it above Chat and inside mobile viewport. */
+.offline-music-float{z-index:2100!important;filter:drop-shadow(0 5px 15px #0003);}
+.offline-music-note{background-color:#f9f9f9!important;border-radius:50%!important;box-shadow:0 1px 8px #0003!important;}
+.offline-music-mini,.offline-music-panel{max-width:100%;}
+
+.chat-room-wrapper[data-offline-notes="true"]>.offline-music-float{position:absolute!important;pointer-events:auto;max-width:calc(100% - 20px)!important;}
