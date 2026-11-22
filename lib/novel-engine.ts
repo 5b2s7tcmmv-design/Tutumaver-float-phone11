@@ -12,7 +12,7 @@ import {translateContentTexts,resolveContentTranslationApiConfig} from './conten
 import {NOVEL_STYLES} from './novel-styles';
 import {novelId,newNovelBook,novelWordCount,type NovelState,type NovelSpec,type NovelBook,type NovelChapter,type NovelComment,type NovelPost} from './novel-storage';
 import {createOrGetSession,pushChatMessage} from './chat-storage';
-import {CHAT_OPEN_SESSION_EVENT} from './chat-notification-events';
+import {openSharedChatSession} from './chat-notification-events';
 import {activeReverse} from './reverse-phone-state';
 const str=(v:unknown)=>typeof v==='string'?v.trim():'';
 export function parseNovelJSON(raw:string):Record<string,unknown>{const a=raw.indexOf('{'),b=raw.lastIndexOf('}');if(a<0||b<a)throw Error('生成未返回完整数据，已有内容已保留');const parsed=JSON.parse(jsonrepair(raw.slice(a,b+1)));if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw Error('生成格式不正确');return parsed}
