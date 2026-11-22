@@ -18,7 +18,7 @@ const entry=fresh.prompts.find(p=>p.identifier==='chat_immersion_instruction');
 assert(entry);
 assert(!entry.content.includes(contract),'Chat preset must not carry calendar fields');
 assert(entry.content.includes('自然聊天'));
-const bad={...fresh,prompts:fresh.prompts.map(p=>p.identifier==='chat_immersion_instruction'?{...p,content:'用户设置的日历方向\\n'+contract}:p),someUserField:'preserve'};
+const bad={...fresh,prompts:fresh.prompts.map(p=>p.identifier==='chat_immersion_instruction'?{...p,content:'用户设置的日历方向\n'+contract}:p),someUserField:'preserve'};
 const repaired=repairBuiltinChatImmersion(bad);
 assert(repaired!==bad);
 assert.equal(repaired.someUserField,'preserve');
