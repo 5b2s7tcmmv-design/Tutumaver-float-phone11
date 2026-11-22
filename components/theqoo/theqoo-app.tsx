@@ -1,5 +1,11 @@
 "use client";
+import {TextImage} from "@/components/media/text-image";
+import { GroupShareTargets } from "@/components/chat/group-share-targets";
+
+import { resolveChatShareSession } from '@/lib/chat-share-targets';
+
 import {useSnapshotNavigation} from "@/lib/shared-snapshot-navigation";
+
 import {syncBilingualEdit} from "@/lib/bilingual-edit";
 import { useGenerationFeedback } from "@/components/generation-feedback";
 
@@ -77,6 +83,7 @@ export function TheqooApp({ onClose, onNotice: externalNotice, visible = true, o
   const [imageBusy, setImageBusy] = useState(false);
   const { onNotice, feedback: generationFeedback } = useGenerationFeedback(busy ? (generationKind === "search" ? "正在生成搜索结果…" : "正在刷新 theqoo 帖子…") : moreCommentsPostId ? "正在生成更多评论…" : imageBusy ? "正在生成图片…" : publishing ? "正在发布帖子…" : commentBusy ? "正在发布评论…" : null, externalNotice, visible);
   const [imagePrompt, setImagePrompt] = useState("");
+  const [imagePreview,setImagePreview]=useState<{ref:string;prompt:string;targetId:string|null}|null>(null);
   const [textImageDraft, setTextImageDraft] = useState("");
   const [textImageTargetId, setTextImageTargetId] = useState<string | null>(null);
   const [imageTargetId, setImageTargetId] = useState<string | null>(null);
@@ -100,8 +107,8 @@ export function TheqooApp({ onClose, onNotice: externalNotice, visible = true, o
       setPage("detail");
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
- useSnapshotNavigation('theqoo',target=>{if(state.posts.some(p=>p.id===target.id)){setPostId(target.id);setPreviousPage('home');setPage('detail');}else onNotice?.('原帖已删除，已分享的快照仍可查看');});
 
+ useSnapshotNavigation('theqoo',target=>{if(state.posts.some(p=>p.id===target.id)){setPostId(target.id);setPreviousPage('home');setPage('detail');}else onNotice?.('原帖已删除，已分享的快照仍可查看');});
   const selected = state.posts.find(p => p.id === postId) || null;
   const zh = state.uiLanguage === "zh";
   const ja = state.uiLanguage === "ja";
@@ -218,7 +225,7 @@ export function TheqooApp({ onClose, onNotice: externalNotice, visible = true, o
 
   const loadMoreComments = async () => {
     const post = selected;
-    if (!post || !post.comments.length || busyRef.current || moreBusyRef.current || post.comments.some(c => c.authoredByUser && c.pendingRefresh)) return;
+    if (!post || (!post.comments.length && !post.authoredByUser) || busyRef.current || moreBusyRef.current || post.comments.some(c => c.authoredByUser && c.pendingRefresh)) return;
     moreBusyRef.current = true;
     setMoreCommentsPostId(post.id);
     try {
@@ -344,19 +351,10 @@ export function TheqooApp({ onClose, onNotice: externalNotice, visible = true, o
     setImageBusy(true);
     try {
       const description = `韩国匿名论坛 theqoo 帖子配图。图片生成提示词与画面中出现的所有可见文字都必须使用简体中文，禁止出现韩文/韩语文字。排版清楚，不使用真人肖像。${imagePrompt.trim() ? `中文画面描述：${imagePrompt.trim()}` : "以简约论坛信息卡片或氛围配图呈现，不包含具体人物姓名或帖子标题。"}`;
-      const result = await generateImageFromConfiguredApi({ description, appId: "theqoo" });
+      const result = await generateImageFromConfiguredApi({userInitiated:true, description, appId: "theqoo" });
       if (!result) throw new Error("生图没有返回图片，请检查生图设置。");
-      const images = imagesOf(post);
-      const next = { id: imageTargetId || newId(), kind: "generated" as const, mediaRef: result.mediaRef, prompt: imagePrompt.trim() };
-      if (imageTargetId) {
-        const index = images.findIndex(image => image.id === imageTargetId);
-        if (index >= 0) images[index] = next; else images.push(next);
-      } else images.push(next);
-      replaceImages(post, images);
-      setImageEditor(false);
-      setImagePrompt("");
-      setImageTargetId(null);
-      onNotice("图片已生成并添加");
+      setImagePreview({ref:result.mediaRef,prompt:imagePrompt.trim(),targetId:imageTargetId});
+      onNotice('图片已生成，请确认是否使用');
     } catch (error) {
       onNotice?.(error instanceof Error ? `操作失败：${error.message}` : "生图失败，请重试。");
     } finally {
@@ -514,8 +512,8 @@ export function TheqooApp({ onClose, onNotice: externalNotice, visible = true, o
         <section className={styles.body}>
           {translation(`body_${selected.id}`, selected.bodyOriginal, selected.bodyTranslated)}
           {imagesOf(selected).map(image => <div className={styles.inlineImage} key={image.id}>
-            {image.kind === "text"
-              ? <div className={styles.textImageCard}>{image.translatedText || image.originalText}</div>
+            {image.kind === "text" || (image.prompt && image.prompt!=='本地图片')
+              ? <TextImage appId="theqoo" contentId={selected.id+':'+image.id} prompt={image.originalText||image.translatedText||image.prompt||''} initialRef={image.kind==='generated'?image.mediaRef:undefined} onApply={(ref,prompt)=>replaceImages(selected,imagesOf(selected).map(i=>i.id===image.id?{...i,kind:ref?'generated':'text',mediaRef:ref?.replace(/^asset:\/\//,''),prompt,originalText:i.originalText||prompt,translatedText:i.translatedText||prompt}:i))}/>
               : image.mediaRef ? <ForumImage assetId={image.mediaRef} /> : null}
           </div>)}
         </section>
@@ -532,7 +530,7 @@ export function TheqooApp({ onClose, onNotice: externalNotice, visible = true, o
             {translation(`comment_${c.id}`, c.original, c.translated)}
           </article>;
         })}
-        {selected.comments.length > 0 && <button
+        {(selected.comments.length > 0 || selected.authoredByUser) && <button
           type="button"
           className={styles.loadMoreComments}
           disabled={busy || moreCommentsPostId !== null || selected.comments.some(c => c.authoredByUser && c.pendingRefresh)}
@@ -612,7 +610,8 @@ export function TheqooApp({ onClose, onNotice: externalNotice, visible = true, o
       <label className={styles.imageLabel}>{t("문자 이미지 · 중국어", "添加文字图 · 仅中文")}<textarea value={textImageDraft} onChange={e => setTextImageDraft(e.target.value)} placeholder="输入中文文字图内容；不会调用翻译 API" /></label>
       <button className={styles.secondary} disabled={imageBusy || !textImageDraft.trim()} onClick={() => void addTextImage()}>{textImageTargetId ? t("문자 이미지 저장", "保存文字图") : t("문자 이미지 추가", "添加文字图")}</button>
       <label className={styles.imageLabel}>{imageTargetId ? t("이미지 재생성 · 중국어 설명", "重新生成 · 中文描述") : t("AI 이미지 · 중국어 설명", "AI 生图 · 中文描述")}<textarea value={imagePrompt} onChange={e => setImagePrompt(e.target.value)} placeholder="图片描述请直接写中文；生成图内文字也只使用中文" /></label>
-      <button className={styles.primary} disabled={imageBusy} onClick={() => void generateImage()}>{imageBusy ? t("생성 중…", "生成中…") : imageTargetId ? t("다시 생성", "重新生图") : t("이미지 생성", "生成并添加图片")}</button>
+      {imagePreview&&<><ForumImage assetId={imagePreview.ref}/><button className={styles.primary} disabled={imageBusy} onClick={()=>{const image={id:imagePreview.targetId||newId(),kind:'generated' as const,mediaRef:imagePreview.ref,prompt:imagePreview.prompt};const images=imagesOf(selected);const index=images.findIndex(i=>i.id===image.id);if(index>=0)images[index]=image;else images.push(image);replaceImages(selected,images);setImagePreview(null);setImageEditor(false);}}>使用这张图</button></>}
+      <button className={styles.primary} disabled={imageBusy} onClick={() => void generateImage()}>{imageBusy ? t("생성 중…", "生成中…") : imageTargetId ? t("다시 생성", "重新生图") : t("이미지 생성", "生成图片预览")}</button>
     </div></div>}
   </div>;
 }
@@ -628,3 +627,4 @@ function PostList({ posts, zh, ja, translationEnabled, onOpen, empty }: { posts:
     </button>;
   })}</> : <div className={styles.empty}>{empty}</div>;
 }
+
