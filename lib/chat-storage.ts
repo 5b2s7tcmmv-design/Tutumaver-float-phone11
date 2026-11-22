@@ -1,3 +1,4 @@
+import { autoArchiveEndedCall } from './chat-call-archives';
 import type { SocialMedia } from './social-media';
 import {restoreChatListEntry} from './chat-list-entry';
 import type { ForwardedChatRecord } from "./chat-forward";
@@ -1573,6 +1574,10 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
 
     _messagesCache.push(newMsg);
     dbPutMessage(newMsg);
+    // Automatic archiving is text-only and separate from AI context.
+    if (newMsg.mediaData?.callEvent === "end" || /(?:挂断了|拒绝了|取消了)(?:群)?(?:语音|视频)通话|(?:语音|视频)通话已结束/.test(newMsg.content)) {
+        autoArchiveEndedCall(newMsg, _messagesCache);
+    }
     resolvePendingAvatarRecommendation(newMsg);
 
     // Auto update session last message only for records that can produce a list preview.
