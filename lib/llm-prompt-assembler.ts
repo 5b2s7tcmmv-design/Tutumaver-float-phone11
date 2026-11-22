@@ -437,12 +437,12 @@ function getMarkerContent(
             return userPersonaText;
         case "worldInfoBefore": {
             if (wbBeforeEntries.length === 0) return null;
-            const sorted = [...wbBeforeEntries].sort((a, b) => (a.insertion_order ?? 50) - (b.insertion_order ?? 50));
+            const sorted = wbBeforeEntries;
             return sorted.map(e => regexGroups ? applyWorldInfoRegex(e.content, regexGroups, regexCtx) : e.content).join("\n\n");
         }
         case "worldInfoAfter": {
             if (wbAfterEntries.length === 0) return null;
-            const sorted = [...wbAfterEntries].sort((a, b) => (a.insertion_order ?? 50) - (b.insertion_order ?? 50));
+            const sorted = wbAfterEntries;
             return sorted.map(e => regexGroups ? applyWorldInfoRegex(e.content, regexGroups, regexCtx) : e.content).join("\n\n");
         }
         case "calendarSchedule":
@@ -876,6 +876,7 @@ export function assemblePromptPayload(input: AssemblerInput): LLMMessage[] {
         });
 
         // World book at-depth entries (position=4) — injected at specific chat depth
+        let worldbookDepthOrder = 0;
         wbAtDepthEntries.forEach(entry => {
             let content = engine.expand(entry.content);
             content = postProcessTrim(content).trim();
@@ -885,7 +886,7 @@ export function assemblePromptPayload(input: AssemblerInput): LLMMessage[] {
                 text: content,
                 role: entry.role === 1 ? "user" : (entry.role === 2 ? "assistant" : "system"),
                 depth: entry.depth ?? 4,
-                order: entry.insertion_order ?? 50,
+                order: 50 + worldbookDepthOrder++,
                 marker: `WB: ${entry.key}`,
             });
         });
@@ -1870,7 +1871,7 @@ export function assembleGroupPromptPayload(input: GroupAssemblerInput): LLMMessa
                 atDepthInjections.push({ entry, engine: bookEngine });
             });
             const renderJoined = (entries: WorldBookEntry[]): string => {
-                const sorted = [...entries].sort((a, b) => (a.insertion_order ?? 50) - (b.insertion_order ?? 50));
+                const sorted = entries;
                 return postProcessTrim(bookEngine.expand(
                     sorted.map(e => applyWorldInfoRegex(e.content, regexes, { macroEngine: bookEngine, activeTags })).join("\n\n"),
                 )).trim();
@@ -2012,6 +2013,7 @@ export function assembleGroupPromptPayload(input: GroupAssemblerInput): LLMMessa
         });
     }
     // 2.6 at-depth 世界书条目(独享+共享,均已去重):照单聊规则插入聊天历史对应深度
+    let groupWorldbookDepthOrder = 0;
     for (const inj of atDepthInjections) {
         let content = inj.engine.expand(inj.entry.content);
         content = postProcessTrim(content).trim();
@@ -2021,7 +2023,7 @@ export function assembleGroupPromptPayload(input: GroupAssemblerInput): LLMMessa
             text: content,
             role: inj.entry.role === 1 ? "user" : (inj.entry.role === 2 ? "assistant" : "system"),
             depth: inj.entry.depth ?? 4,
-            order: inj.entry.insertion_order ?? 50,
+            order: 50 + groupWorldbookDepthOrder++,
             marker: `WB: ${inj.entry.key}`,
         });
     }
