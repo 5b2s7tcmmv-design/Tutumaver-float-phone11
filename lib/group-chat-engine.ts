@@ -1,3 +1,4 @@
+import { loadWalletState, getWalletVisibleCurrencies, getWalletCurrencyBalance, formatCurrencyAmount } from "./wallet-storage";
 import { MUSIC_SHARE_FORMAT_INSTRUCTION } from "./music-share-format";
 import { offlineSpeechInstruction } from "./offline-dialogue";
 import { loadChatOfflineSceneState } from "./chat-offline-storage";
@@ -507,7 +508,10 @@ async function buildGroupChatPromptMessages(
         offlineSummaryTag: preset?.story_summary_tag?.trim() || "summary",
         nativeToolHistory: usesNativeActions,
     });
-    if (!promptProfile && activeAppTags.includes("group_chat")) llmMessages.push({role:"system",content:MUSIC_SHARE_FORMAT_INSTRUCTION});
+    if (!promptProfile && activeAppTags.includes("group_chat")) {
+        llmMessages.push({role:"system",content:MUSIC_SHARE_FORMAT_INSTRUCTION});
+        llmMessages.push({role:"system",content:"红包和转账金额必须标实际ISO币种，不默认人民币；转账必须指明真实收款成员。红包总额至少覆盖份数所需的最小货币单位。各成员实际可用钱包：\\n"+members.map(m=>{const w=loadWalletState(m.character.id);return m.character.name+'：'+getWalletVisibleCurrencies(w).map(c=>c+' '+formatCurrencyAmount(getWalletCurrencyBalance(w,c),c)).join('；');}).join('\\n')});
+    }
     if (promptProfile?.output === "plain_text") {
         llmMessages.push({
             role: "system",
