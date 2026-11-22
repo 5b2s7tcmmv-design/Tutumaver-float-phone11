@@ -1,4 +1,4 @@
-import { effectivePhotoDelivery } from "./media-preferences";
+import { mediaScope, effectivePhotoDelivery } from "./media-preferences";
 import { photoStorySearchText } from "./photo-story-data";
 import { getChatImageFromIndexedDB, saveChatImageToIndexedDB } from "./chat-asset-storage";
 import { generateImageFromConfiguredApi } from "./image-generation-service";
@@ -36,6 +36,7 @@ export type MediaResolverRequest = {
   appId: string;
   /** auto uses the shared album strategy; generate skips the album; text saves a description without an API request. */
   mode?: "auto" | "generate" | "text";
+  userInitiated?: boolean;
   useReferenceImage?: boolean;
   signal?: AbortSignal;
   /** Caller records use only after caption checks succeed. */
@@ -155,6 +156,7 @@ async function generateMedia(request: MediaResolverRequest, intentKind: MediaInt
   const characterId = request.actor.type === "character" ? request.actor.characterId : undefined;
   const generated = await generateImageFromConfiguredApi({
     description: request.description,
+    userInitiated: request.userInitiated===true,
     characterId,
     appId: request.appId,
     useReferenceImage: request.useReferenceImage ?? (request.actor.type === "character" && ["selfie", "portrait", "group"].includes(intentKind)),
@@ -222,16 +224,15 @@ export async function resolveMediaForUse(request: MediaResolverRequest): Promise
     : request.channel === "twitter_alt" && request.accountId && request.actor.photoIds
       ? preferences.enabledAlternateIds.includes(request.accountId)
       : preferences.enabledCharacterIds.includes(request.actor.characterId);
-  const strategy = imported ? getPhotoSourceStrategy(request.appId === "weverse" ? "wvs" : "other") : "generated_only";
+  const strategy = imported ? mediaScope(request.appId,request.actor.type === "character"?request.actor.characterId:request.actor.officialId).source || preferences.importedStrategy : "generated_only";
   const intentKind = request.intentKind || "other";
   const debugEnabled = getPhotoResolverDebugEnabled();
 
-  if (request.mode === "generate") {
-    if (imported && strategy === "album_only") return null;
+  if (request.mode === "generate" && request.userInitiated) {
     return generateMedia(request, intentKind);
   }
   const generatedOnly = !imported && request.actor.type === "character" && !request.actor.photoIds;
-  if (strategy !== "generated_only" || generatedOnly) {
+  if (strategy !== "generated_only" && imported) {
     if (request.actor.type === "character") {
       if (request.actor.photoIds) {
         const poolMatch = await resolveCharacterPoolPhoto(request as MediaResolverRequest & { actor: CharacterMediaActor }).catch(() => null);
@@ -294,7 +295,7 @@ export async function resolveMediaForUse(request: MediaResolverRequest): Promise
   }
 
   if (strategy === "album_only") return null;
-  return socialAuto ? generateOrPlain() : { source: "text_placeholder", placeholderDescription: description };
+  return { source: "text_placeholder", placeholderDescription: description };
 }
 
 /** Finish a deferred social publish. Keeps historical records; does not release/reset a photo. */
