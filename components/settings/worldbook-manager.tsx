@@ -16,6 +16,7 @@ import { SettingsContext } from "../phone-settings-app";
 import { BottomSheet, ConfirmDialog, TextExpandModal } from "@/components/ui/modal";
 import { SwipeActionRow, useSwipeActions } from "@/components/ui/swipe-actions";
 import { notifyMascotPageContext } from "@/lib/mascot-events";
+import {worldBookFromDocumentText,readWorldBookDocumentText} from "@/lib/worldbook-document-import";
 
 export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {}) {
     const [books, setBooks] = useState<WorldBookConfig[]>([]);
@@ -25,6 +26,7 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
     const [confirmDeleteTarget, setConfirmDeleteTarget] = useState<{ type: 'book' | 'entry', id: string } | null>(null);
     const [isLoaded, setIsLoaded] = useState(false);
     const [expandUid, setExpandUid] = useState<string | null>(null);
+    const [documentPreview,setDocumentPreview]=useState<{filename:string;text:string}|null>(null);
     const [importError, setImportError] = useState<string | null>(null);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -286,31 +288,15 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
         }
     };
 
-    const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            try {
-                const text = event.target?.result as string;
-                const parsed = parseWorldBookFromJson(text);
-                if (parsed) {
-                    persist([parsed, ...books]);
-                    setActiveBookId(parsed.id);
-                } else {
-                    setImportError("无法解析世界书文件，格式不正确。");
-                }
-            } catch (e) {
-                if (e instanceof Error && e.message === UNSUPPORTED_IMPORT_FORMAT) {
-                    setImportError("不支持该世界书格式");
-                } else {
-                    setImportError("无法解析世界书文件，格式不正确。");
-                }
-            }
-        };
-        reader.readAsText(file);
-        if (fileInputRef.current) fileInputRef.current.value = "";
+    const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file=e.target.files?.[0];if(fileInputRef.current)fileInputRef.current.value="";
+        if(!file)return;
+        try{
+            if(!/\.json$/i.test(file.name)){setDocumentPreview({filename:file.name,text:await readWorldBookDocumentText(file)});setImportError(null);return;}
+            const parsed=parseWorldBookFromJson(await file.text());
+            if(!parsed)throw Error("无法解析此世界书 JSON 文件。");
+            const current=loadWorldBooks();saveWorldBooks([parsed,...current]);setBooks([parsed,...current]);setActiveBookId(parsed.id);setViewMode("detail");setImportError(null);
+        }catch(error){setImportError(error instanceof Error&&error.message!==UNSUPPORTED_IMPORT_FORMAT?error.message:"不支持该世界书格式。");}
     };
 
     const handleExport = async (book: WorldBookConfig) => {
@@ -472,7 +458,8 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
 
     return (
         <div ref={wbContainerRef} className="flex flex-col gap-5 h-full">
-            <input type="file" accept=".json" className="hidden" ref={fileInputRef} onChange={handleImport} />
+            {documentPreview&&<div className="modal-overlay settings-prompt-overlay" onClick={()=>setDocumentPreview(null)}><section role="dialog" aria-modal="true" aria-label="确认世界书文档" className="modal-dialog settings-prompt-dialog" onClick={e=>e.stopPropagation()}><h3>检查导入正文</h3><p className="menu-desc">可编辑正文，确认后按段落拆分为世界书条目。</p><textarea className="ui-input settings-prompt-text" aria-label="导入正文" maxLength={120000} value={documentPreview.text} onChange={e=>setDocumentPreview({...documentPreview,text:e.target.value})}/><div className="settings-prompt-actions"><button type="button" className="ui-btn ui-btn-outline" onClick={()=>setDocumentPreview(null)}>取消</button><button type="button" className="ui-btn ui-btn-primary" disabled={!documentPreview.text.trim()} onClick={()=>{try{const parsed=worldBookFromDocumentText(documentPreview.filename,documentPreview.text),current=loadWorldBooks();saveWorldBooks([parsed,...current]);setBooks([parsed,...current]);setActiveBookId(parsed.id);setViewMode('detail');setDocumentPreview(null);}catch(e){setImportError(e instanceof Error?e.message:'无法导入');}}}>确认导入</button></div></section></div>}
+            <input type="file" accept=".json,.txt,.md,.docx,.doc" className="hidden" ref={fileInputRef} onChange={handleImport} />
             <input type="file" accept=".json" className="hidden" ref={entryFileInputRef} onChange={handleEntryImportFile} />
             {viewMode === "list" ? (
                 <>
