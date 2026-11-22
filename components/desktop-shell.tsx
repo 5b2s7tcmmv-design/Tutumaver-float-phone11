@@ -163,7 +163,7 @@ import { loadCharacters } from "@/lib/character-storage";
 import { generateChatCompletion, flattenCompletionResult } from "@/lib/chat-engine";
 import { parseAIResponse } from "@/lib/rich-message-parser";
 import { requestBackgroundChatReply, scheduleFollowUp } from "@/lib/follow-up-service";
-import { CHAT_MESSAGE_NOTICE_EVENT, CHAT_OPEN_SESSION_EVENT, type ChatMessageNoticeDetail } from "@/lib/chat-notification-events";
+import { CHAT_MESSAGE_NOTICE_EVENT, CHAT_OPEN_SESSION_EVENT, CHAT_OPEN_SHARED_SESSION_EVENT, type ChatMessageNoticeDetail } from "@/lib/chat-notification-events";
 import { startIncomingCallVibration } from "@/lib/call-vibration";
 import { smsContactDisplayName, SMS_EVENT, SMS_INCOMING_EVENT, getSmsUnreadCount, loadSms, type SmsMessage, type SmsThread } from "@/lib/sms-storage";
 import { PHONE_EVENT, appendPhoneCall, getCharacterPhoneNumber, getUnseenMissedCallCount, loadPhoneState, phoneId } from "@/lib/phone-storage";
@@ -2625,6 +2625,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets, initialL
   // Mini chat window state
   const [showMiniChat, setShowMiniChat] = useState(false);
   const [miniSharePayload, setMiniSharePayload] = useState<ChatSharePayload | null>(null);
+  const [miniShareSession, setMiniShareSession] = useState<{id: string; request: number}>();
   const miniSessionRef = useRef<ChatSession | null>(null);
   const handleMiniChatClose = useCallback(() => {
     setShowMiniChat(false);
@@ -2639,18 +2640,31 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets, initialL
     setShowMiniChat(false);
     musicOverlayControllerRef.current?.closeFullPlayer();
     setActiveApp("chat" as IconId);
-    const sid = miniSessionRef.current?.id;
+    const sid = miniSessionRef.current?.id || miniShareSession?.id;
     if (sid) setChatInitSessionId(sid);
-  }, []);
+  }, [miniShareSession]);
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
+      setMiniShareSession(undefined);
       if (detail?.share) setMiniSharePayload(detail.share);
       else setMiniSharePayload(null);
       setShowMiniChat(true);
     };
+    const openSharedSession = (event: Event) => {
+      const id = (event as CustomEvent<{sessionId?: string}>).detail?.sessionId;
+      if (!id) return;
+      miniSessionRef.current = null;
+      setMiniSharePayload(null);
+      setMiniShareSession(previous => ({id, request: (previous?.request ?? 0) + 1}));
+      setShowMiniChat(true);
+    };
+    window.addEventListener(CHAT_OPEN_SHARED_SESSION_EVENT, openSharedSession);
     window.addEventListener("open-mini-chat", handler);
-    return () => window.removeEventListener("open-mini-chat", handler);
+    return () => {
+      window.removeEventListener("open-mini-chat", handler);
+      window.removeEventListener(CHAT_OPEN_SHARED_SESSION_EVENT, openSharedSession);
+    };
   }, []);
 
   const openChatSessionFromNotice = useCallback((sessionId: string) => {
