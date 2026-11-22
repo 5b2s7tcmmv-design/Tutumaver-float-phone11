@@ -4276,7 +4276,7 @@ export async function generateCheckPhoneMessages(
   }
 }
 
-/** Ordinary reverse-phone browser only. The independent special-site browser is untouched. */
+/** Ordinary reverse-phone browser only. The independent special-site browser is untouched; share edition excludes YouTube. */
 function normalizeBrowserPayload(payload: unknown): CheckPhoneBrowserPayload | null {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
   const record = payload as Record<string, unknown>;
