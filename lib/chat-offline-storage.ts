@@ -94,7 +94,11 @@ export function archiveChatOfflineScene(archive: ChatOfflineArchive, expectedTur
 }
 
 
+export type ChatOfflineImage = { id?: string; prompt: string; ref?: string; usage: "decoration" | "scene" | "interactive"; recognition?:"direct"|"manual"; description?:string; futureOnly?:boolean; targetRole?:"user"|"assistant" };
+
 export type ChatOfflineTurn = {
+    userImage?: ChatOfflineImage;
+    assistantImage?: ChatOfflineImage;
     id: string;
     sessionId: string;
     userContent: string;
@@ -135,6 +139,13 @@ function createTurnId(): string {
     return `offline_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
+function normalizeOfflineImage(value: unknown): ChatOfflineImage | undefined {
+    if (!value || typeof value !== "object") return undefined;
+    const item = value as Partial<ChatOfflineImage>;
+    if (typeof item.prompt !== "string" || item.prompt.length > 16000) return undefined;
+    return {recognition:item.recognition==="manual"?"manual":"direct",description:typeof item.description==="string"?item.description.slice(0,16000):undefined,futureOnly:item.futureOnly===true,targetRole:item.targetRole==="assistant"?"assistant":"user",id:typeof item.id === "string"?item.id:undefined, prompt:item.prompt, ref:typeof item.ref === "string"?item.ref:undefined, usage: item.usage === "scene" || item.usage === "interactive" ? item.usage : "decoration"};
+}
+
 function normalizeTurn(value: unknown): ChatOfflineTurn | null {
     if (!value || typeof value !== "object") return null;
     const item = value as Partial<ChatOfflineTurn>;
@@ -152,6 +163,8 @@ function normalizeTurn(value: unknown): ChatOfflineTurn | null {
         reasoningText: typeof item.reasoningText === "string" ? item.reasoningText : undefined,
         thinkingText: typeof item.thinkingText === "string" ? item.thinkingText : undefined,
         thinkingTag: typeof item.thinkingTag === "string" ? item.thinkingTag : undefined,
+        userImage: normalizeOfflineImage(item.userImage),
+        assistantImage: normalizeOfflineImage(item.assistantImage),
         createdAt: item.createdAt,
     };
 }
@@ -193,6 +206,8 @@ export function appendChatOfflineTurn(input: {
     reasoningText?: string;
     thinkingText?: string;
     thinkingTag?: string;
+    userImage?: ChatOfflineImage;
+    assistantImage?: ChatOfflineImage;
 }): ChatOfflineTurn {
     const turn: ChatOfflineTurn = {
         id: createTurnId(),
@@ -205,6 +220,8 @@ export function appendChatOfflineTurn(input: {
         reasoningText: input.reasoningText,
         thinkingText: input.thinkingText,
         thinkingTag: input.thinkingTag,
+        userImage: input.userImage,
+        assistantImage: input.assistantImage,
         createdAt: new Date().toISOString(),
     };
     saveChatOfflineTurns(input.sessionId, [...loadChatOfflineTurns(input.sessionId), turn]);
@@ -215,7 +232,7 @@ export function appendChatOfflineTurn(input: {
 export function updateChatOfflineTurn(
     sessionId: string,
     turnId: string,
-    patch: Partial<Pick<ChatOfflineTurn, "userContent" | "assistantContent" | "summary" | "summaryTag" | "rawText" | "reasoningText" | "thinkingText" | "thinkingTag">>,
+    patch: Partial<Pick<ChatOfflineTurn, "userContent" | "assistantContent" | "summary" | "summaryTag" | "rawText" | "reasoningText" | "thinkingText" | "thinkingTag" | "userImage" | "assistantImage">>,
 ): ChatOfflineTurn | null {
     let updated: ChatOfflineTurn | null = null;
     const turns = loadChatOfflineTurns(sessionId).map((turn) => {
@@ -385,3 +402,9 @@ export function getChatOfflineTurnPreview(turn: ChatOfflineTurn | null): string 
     const text = compactProjectionText(source, 60);
     return text ? `[线下] ${text}` : "";
 }
+
+/** Draft images survive leaving the chat and failed generations. */
+export function loadOfflineImageDraft(sessionId:string):ChatOfflineImage|null {try{return normalizeOfflineImage(JSON.parse(kvGet('ai_phone_chat_offline_image_draft:'+sessionId)||'null'))||null;}catch{return null;}}
+export function saveOfflineImageDraft(sessionId:string,image:ChatOfflineImage|null){kvSet('ai_phone_chat_offline_image_draft:'+sessionId,JSON.stringify(image));}
+
+registerDynamicPrefix("ai_phone_chat_offline_image_draft:");
