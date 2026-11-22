@@ -65,6 +65,8 @@ jobs:
       - run: npm ci
       - name: TypeScript check
         run: npm run typecheck
+      - name: Next.js production build
+        run: npm run build
       - name: Resource 080 built-in Chat preset migration
         run: node scripts/check-share080-preset.cjs
       - name: Browser regression checks
