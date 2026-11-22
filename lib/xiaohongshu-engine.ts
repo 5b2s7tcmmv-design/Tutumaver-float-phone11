@@ -1069,7 +1069,7 @@ async function resolveCharacterAssemblerInput(
   const apiConfig = activeSlot.apiConfigId
     ? loadApiConfigs().find(config => config.id === activeSlot.apiConfigId) ?? null
     : null;
-  const presets = loadPresets();
+  const presets = loadPresets(characterId);
   let preset = activeSlot.presetId ? presets.find(item => item.id === activeSlot.presetId) ?? null : null;
   if (!preset) preset = presets.find(item => item.builtIn) ?? null;
   const worldBooks = (activeSlot.worldBookIds || [])
@@ -1284,6 +1284,8 @@ export async function generateXiaohongshuNpcMoreComments(
     "",
     "<xiaohongshu_note_comment_context>",
     commentContext,
+    '本轮批量续写讨论；只把以下尚待回应的用户评论当作新输入，可自然选择回应或闲聊，不机械逐条作答，不重复回复已处理的旧输入。普通网友不得冒充角色或用户。回复链优先使用真实评论ID。',
+    ...note.comments.filter(c=>c.authorType==='user'&&c.pendingReply&&c.npcReplyPending).map(c=>`待回应 [评论ID]${c.id} [回复目标]${c.replyToCommentId||'主帖'} [内容]${c.text}`),
     "</xiaohongshu_note_comment_context>",
     note.imageAssetId && !note.imageDescription ? "该笔记有真实图片；如果你无法看到图片，请只根据标题、正文、TAG 与评论区上下文生成更多评论。" : "",
   ].filter(Boolean).join("\n");
