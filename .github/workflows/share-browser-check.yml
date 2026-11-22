@@ -1,7 +1,7 @@
 name: Validate share Browser integration
 on:
   push:
-    branches: [main]
+    branches: [main, 'sync/full-080-applicable']
     paths:
       - "components/browser/**"
       - "components/checkphone/**"
@@ -31,6 +31,11 @@ on:
       - "lib/offline-*.ts"
       - "lib/chat-offline-storage.ts"
       - "lib/media-preferences.ts"
+      - "lib/browser-video-share.ts"
+      - "lib/text-image-mask.ts"
+      - "lib/image-prompt-language.ts"
+      - "components/settings/**"
+      - "lib/shared-snapshot.ts"
       - "lib/media-resolver.ts"
       - "lib/photo-library-*.ts"
       - "lib/text-image-storage.ts"
