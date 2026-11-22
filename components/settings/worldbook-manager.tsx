@@ -17,6 +17,7 @@ import { BottomSheet, ConfirmDialog, TextExpandModal } from "@/components/ui/mod
 import { SwipeActionRow, useSwipeActions } from "@/components/ui/swipe-actions";
 import { notifyMascotPageContext } from "@/lib/mascot-events";
 import {worldBookFromDocumentText,readWorldBookDocumentText} from "@/lib/worldbook-document-import";
+import {useTouchSort} from "@/lib/use-touch-sort";
 
 export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {}) {
     const [books, setBooks] = useState<WorldBookConfig[]>([]);
@@ -309,6 +310,16 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
     const activeBook = books.find(b => b.id === activeBookId);
 
     const visibleEntries = activeBook?.entries || [];
+    // Saved array order drives both the UI and actual prompt assembly.
+    // Legacy insertion_order remains unchanged for old exports.
+    const worldbookSort = useTouchSort((from, to) => {
+        if (!activeBook || editingUid || from === to) return;
+        const entries = [...activeBook.entries];
+        if (from < 0 || to < 0 || from >= entries.length || to >= entries.length) return;
+        const [item] = entries.splice(from, 1);
+        entries.splice(to, 0, item);
+        updateBook(activeBook.id, { entries });
+    });
 
     // ── 条目左滑操作（微信式：左滑露出「新增/删除」） ──
     const swipe = useSwipeActions();
@@ -570,18 +581,18 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
                             <h2 className="mx-2 mb-0 mt-2 ts-20 font-bold leading-none text-black">Worldbook Entries ({activeBook.entries?.length || 0})</h2>
 
                             {/* Entry Cards */}
-                            <div className="flex flex-col gap-2">
+                            <div ref={worldbookSort.containerRef} className="flex flex-col gap-2">
                                 {visibleEntries.length === 0 ? (
                                     <div className="menu-desc text-center mt-10 ts-14">
                                         没找到相关的世界书条目
                                     </div>
                                 ) : (
-                                    visibleEntries.map(entry => {
+                                    visibleEntries.map((entry, entryIndex) => {
                                         const isEditing = editingUid === entry.uid;
 
                                         return (
+                                            <div key={entry.uid} data-worldbook-sort-uid={entry.uid}>
                                             <SwipeActionRow
-                                                key={entry.uid}
                                                 controller={swipe}
                                                 id={entry.uid}
                                                 disabled={isEditing}
@@ -645,6 +656,12 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
                                                 {/* Summary Row */}
                                                 <div className="flex justify-between items-start">
                                                     <button
+                                                        onTouchStart={e => {
+                                                            if (!isEditing && !swipe.openId && !swipe.swipingId) worldbookSort.onTouchStart(entryIndex, e);
+                                                        }}
+                                                        onTouchMove={worldbookSort.onTouchMove}
+                                                        onTouchEnd={worldbookSort.onTouchEnd}
+                                                        onTouchCancel={worldbookSort.onTouchEnd}
                                                         onClick={() => {
                                                             if (swipe.consumeClickSuppression()) return;
                                                             if (swipe.openId || swipe.swipingId) {
@@ -821,6 +838,7 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
                                                 )}
                                             </div>
                                             </SwipeActionRow>
+                                            </div>
                                         )
                                     })
                                 )}
