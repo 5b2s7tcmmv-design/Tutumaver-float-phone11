@@ -21,6 +21,10 @@ export type XiaohongshuComment = {
   disliked: boolean;
   createdAt: string;
   unread?: boolean;
+  pendingReply?: boolean;
+  pendingCharacterIds?: string[];
+  npcReplyPending?: boolean;
+  mentionCharacterId?: string;
 };
 
 export type XiaohongshuNote = {
