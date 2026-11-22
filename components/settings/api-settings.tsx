@@ -11,6 +11,9 @@ import { Toggle, Input } from "@/components/ui/form";
 import { Alert } from "@/components/ui/feedback";
 import { determineBaseUrl, simpleLLMCall } from "@/lib/api-helpers";
 
+import {ModelCombobox} from "@/components/ui/model-combobox";
+import {saveModelList} from "@/lib/model-list-cache";
+
 const DEFAULT_CONFIGS: ApiConfig[] = [
     {
         id: "default-openai",
@@ -42,6 +45,7 @@ export function ApiSettings() {
     // Testing and Fetching states
     const [isFetching, setIsFetching] = useState<Record<string, boolean>>({});
     const [fetchedModels, setFetchedModels] = useState<Record<string, string[]>>({});
+    const [modelQuery,setModelQuery]=useState<Record<string,string>>({});
     const [isTesting, setIsTesting] = useState<Record<string, boolean>>({});
     const [testResult, setTestResult] = useState<Record<string, { success: boolean; message: string }>>({});
 
@@ -56,6 +60,8 @@ export function ApiSettings() {
         }
         setIsLoaded(true);
     }, []);
+
+    useEffect(()=>{const sync=()=>setConfigs(loadApiConfigs());window.addEventListener('settings-api-configs-updated',sync);return()=>window.removeEventListener('settings-api-configs-updated',sync);},[]);
 
     const persist = useCallback((newConfigs: ApiConfig[]) => {
         setConfigs(newConfigs);
@@ -151,7 +157,8 @@ export function ApiSettings() {
             } else {
                 throw new Error("返回数据格式不符合预期");
             }
-            setFetchedModels(prev => ({ ...prev, [config.id]: modelNames }));
+            setFetchedModels(prev => ({ ...prev, [config.id]: [...new Set(modelNames.filter(Boolean))].sort() }));
+            saveModelList(config.id, modelNames);
             setTestResult(prev => ({ ...prev, [config.id]: { success: true, message: `成功获取 ${modelNames.length} 个模型` } }));
         } catch (error: unknown) {
             const msg = error instanceof Error ? error.message : String(error);
@@ -212,7 +219,7 @@ export function ApiSettings() {
     if (!isLoaded) return null;
 
     return (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-6 api-settings-panel">
             <div className="flex items-center">
                 <h2 className="m-0 mx-2 ts-28 font-bold italic leading-none text-black">API Settings</h2>
             </div>
@@ -363,26 +370,9 @@ export function ApiSettings() {
                                         <div className="flex flex-col gap-1">
                                             <label className="menu-desc ml-1">默认模型 (Default Model)</label>
                                             <div className="flex gap-2">
-                                                {fetchedModels[config.id] && fetchedModels[config.id].length > 0 ? (
-                                                    <select
-                                                        value={config.defaultModel}
-                                                        onChange={(e) => updateConfig(config.id, { defaultModel: e.target.value })}
-                                                        className="ui-select flex-1"
-                                                    >
-                                                        <option value="">请选择模型...</option>
-                                                        {fetchedModels[config.id].map(m => (
-                                                            <option key={m} value={m}>{m}</option>
-                                                        ))}
-                                                    </select>
-                                                ) : (
-                                                    <input
-                                                        type="text"
-                                                        value={config.defaultModel}
-                                                        onChange={(e) => updateConfig(config.id, { defaultModel: e.target.value })}
-                                                        placeholder="gpt-4o, claude-3-opus..."
-                                                        className="ui-input flex-1"
-                                                    />
-                                                )}
+                                                <div className="flex flex-col gap-2 flex-1 min-w-0">
+                                                    <ModelCombobox apiId={config.id} value={config.defaultModel} onChange={defaultModel=>updateConfig(config.id,{defaultModel})}/>
+                                                </div>
                                             </div>
                                         </div>
 
