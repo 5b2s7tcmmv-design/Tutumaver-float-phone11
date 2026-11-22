@@ -1,3 +1,4 @@
+import {browserShareMemory} from './browser-video-share';
 import {reconciliationMemory} from './phone-reconcile';
 import {reverseMemory} from "./reverse-phone-state";
 import {secretInspectionProjectionEntries} from "./secret-phone-inspection";
@@ -264,7 +265,7 @@ export function loadCheckPhoneProjectionEntries(
   characterId: string,
   options?: { afterTimestamp?: string },
 ): CheckPhoneProjectionEntry[] {
-  const entries = [...loadProjectionEventsByKey(projectionStorageKey(characterId)), ...visitMemory(characterId), ...phonePlayMemory(characterId),...reverseMemory(characterId),...secretInspectionProjectionEntries(characterId),...reconciliationMemory(characterId)];
+  const entries = [...loadProjectionEventsByKey(projectionStorageKey(characterId)), ...visitMemory(characterId), ...phonePlayMemory(characterId),...browserShareMemory(characterId),...reverseMemory(characterId),...secretInspectionProjectionEntries(characterId),...reconciliationMemory(characterId)];
   if (!options?.afterTimestamp) return entries;
   return entries.filter(entry => entry.timestamp > options.afterTimestamp!);
 }
