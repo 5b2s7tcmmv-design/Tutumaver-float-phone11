@@ -5,14 +5,12 @@ export const maxDuration = 60;
 
 const GATEWAY_SLUG = "ai-phone-push";
 const GENERATE_SLUG = "push-generate";
-const SCREEN_SLUG = "screen-chat";
 
 type DeployRequest = {
   projectRef?: string;
   token?: string;
   gatewayCode?: string;
   generateCode?: string;
-  screenChatCode?: string;
   schemaSql?: string;
 };
 
@@ -107,7 +105,6 @@ export async function POST(request: Request) {
   const token = typeof payload.token === "string" ? payload.token.trim() : "";
   const gatewayCode = typeof payload.gatewayCode === "string" ? payload.gatewayCode : "";
   const generateCode = typeof payload.generateCode === "string" ? payload.generateCode : "";
-  const screenChatCode = typeof payload.screenChatCode === "string" ? payload.screenChatCode : "";
   const schemaSql = typeof payload.schemaSql === "string" ? payload.schemaSql : "";
 
   if (!/^[a-z0-9]{15,40}$/.test(projectRef)) {
@@ -129,13 +126,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "离线生成器部署包无效。" }, { status: 400 });
   }
   if (
-    !screenChatCode.includes("屏幕速聊·同步问答入口")
-    || !screenChatCode.includes("Deno.serve")
-    || screenChatCode.length > 600_000
-  ) {
-    return NextResponse.json({ ok: false, error: "屏幕速聊入口部署包无效。" }, { status: 400 });
-  }
-  if (
     !schemaSql.startsWith("-- ai-phone-personal-push-schema-v1")
     || !schemaSql.includes("create table if not exists public.push_jobs")
     || !schemaSql.includes("__PROJECT_REF__")
@@ -145,7 +135,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    // 必须在部署函数之前检查目标项目，避免覆盖错误的生产环境。
+    // 必须在部署同名函数之前检查。主项目也有 push-generate；
     // 若先部署再查库，错误目标会先覆盖生产函数版本。
     const dedicatedProject = await assertDedicatedProject({ projectRef, token });
     if (!dedicatedProject.ok) {
@@ -168,14 +158,6 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { ok: false, step: "部署离线生成器失败", error: await upstreamMessage(generator) },
         { status: generator.status },
-      );
-    }
-
-    const screenChat = await deployFunction({ projectRef, token, slug: SCREEN_SLUG, code: screenChatCode });
-    if (!screenChat.ok) {
-      return NextResponse.json(
-        { ok: false, step: "部署屏幕速聊入口失败", error: await upstreamMessage(screenChat) },
-        { status: screenChat.status },
       );
     }
 
