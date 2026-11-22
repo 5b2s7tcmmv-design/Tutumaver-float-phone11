@@ -1,5 +1,6 @@
 'use client';
 import {TextImage} from '@/components/media/text-image';
+import {saveCityPhotoDescription} from '@/lib/icity-photo-description';
 import {loadTextImage,findTextImageByRef} from '@/lib/text-image-storage';
 
 import {useSnapshotNavigation} from "@/lib/shared-snapshot-navigation";
