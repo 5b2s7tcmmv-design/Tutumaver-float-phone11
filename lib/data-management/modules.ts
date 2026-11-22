@@ -59,6 +59,9 @@ const PRIMARY_DATA_MODULES: DataModuleDefinition[] = [
           "chat_plugin_vars_v2",
           "chat_plugin_fragments_v2",
           "chat_plugin_errors_v1",
+          "ai_phone_image_prompt_language_v1",
+          "ai_phone_text_image_mask_v1",
+          "rabbit_browser_shares_v1",
         ],
         prefixes: [
           "chat-generating:",
