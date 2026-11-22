@@ -1,4 +1,5 @@
 import type { VoiceApiConfig } from "./settings-types";
+import { fetchAndroidTts, usesAndroidTtsTransport } from "./android-tts";
 export type ElevenLabsModelOption = { id: string; name: string };
 export function parseElevenLabsModels(data: unknown): ElevenLabsModelOption[] {
     if (!Array.isArray(data)) throw new Error("模型列表格式无效");
@@ -15,14 +16,20 @@ export function parseElevenLabsModels(data: unknown): ElevenLabsModelOption[] {
 }
 export async function fetchElevenLabsModels(config: VoiceApiConfig): Promise<ElevenLabsModelOption[]> {
     const base = (config.baseUrl?.trim() || "https://api.elevenlabs.io/v1").replace(/\/+$/, "");
-    const official = base === "https://api.elevenlabs.io/v1";
-    const response = await fetch(official ? "/api/voice/elevenlabs-models" : `${base}/models`, {
-        method: official ? "POST" : "GET",
-        headers: official ? { "Content-Type": "application/json" } : { "xi-api-key": config.apiKey.trim() },
-        ...(official ? { body: JSON.stringify({ apiKey: config.apiKey.trim() }) } : {}),
+    const native = usesAndroidTtsTransport();
+    const proxy = /^https:\/\/api\.elevenlabs\.io\/v1$/i.test(base) && !native;
+    // APK has no local Next.js backend. Use the same native HTTPS transport as
+    // speech synthesis rather than POSTing to its local /api fallback.
+    const response = await (native ? fetchAndroidTts : fetch)(proxy ? "/api/voice/elevenlabs-models" : `${base}/models`, {
+        method: proxy ? "POST" : "GET",
+        headers: proxy ? { "Content-Type": "application/json" } : { "xi-api-key": config.apiKey.trim(), Accept: "application/json" },
+        ...(proxy ? { body: JSON.stringify({ apiKey: config.apiKey.trim() }) } : {}),
         signal: AbortSignal.timeout(25_000), cache: "no-store",
     });
     const data = await response.json().catch(() => null);
-    if (!response.ok) throw new Error(`模型读取失败（HTTP ${response.status}）：${typeof data?.message === "string" ? data.message : "请检查 API Key、权限或代理地址"}`);
+    if (!response.ok) {
+        const detail = data?.detail?.message || data?.detail || data?.message;
+        throw new Error(`模型读取失败（HTTP ${response.status}）：${typeof detail === "string" ? detail.slice(0, 800) : "请检查接口状态、API Key、权限或代理地址"}`);
+    }
     return parseElevenLabsModels(data);
 }
