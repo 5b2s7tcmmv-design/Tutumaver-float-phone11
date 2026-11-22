@@ -1,3 +1,4 @@
+import {contentPrompt} from './content-prompt-settings';
 import { scopeUserIdentity, commonUserRelationship } from "./user-knowledge";
 import { jsonrepair } from "jsonrepair";
 import { splitBilingualText } from "./bilingual-text";
@@ -291,6 +292,7 @@ export function loadInterviewContextForGuests(characterIds: string[], userIdenti
     if (!character) throw new ChatEngineError(`找不到受访角色：${id}`);
 
     const slot = resolveBinding(bindings, id, INTERVIEW_MAGAZINE_APP_ID);
+    const presets = loadPresets(id);
     if (!slot.apiConfigId) {
       throw new ChatEngineError(`未给「在场」绑定 ${character.name} 的 API 配置。`);
     }
@@ -579,7 +581,7 @@ export async function generateHostQuestion(params: {
       "- 避免“你怎么看”“有什么感受”这类泛问。",
       params.target === "user" ? "- 向用户提问时，要把嘉宾刚才的话转成用户可回应的个人经验或判断。" : "- 向嘉宾提问时，承接上一位说话者；如果用户不参与，不要提及用户。",
       params.target === "character" ? `- targetGuest：选择下一位回应者，优先邀请其他嘉宾：${(context.guestNames.filter(name => name !== context.hostName).length ? context.guestNames.filter(name => name !== context.hostName) : context.guestNames).join("、")}。` : "",
-      params.options?.audienceEnabled ? "- reactions：生成 0–5 条匿名听众实时弹幕，也可以一条不生成。弹幕正文写中文，可偶尔带翻译腔或韩语、日语、英语口癖；口癖不代表听众国籍。只反应已公开发言，不剧透、不泄露隐私。角色可以偶尔猜匿名弹幕是否来自用户，但绝不能确定，也不能把弹幕当成用户作为嘉宾在场。" : "",
+      params.options?.audienceEnabled ? contentPrompt('interview.audience') + "- reactions：生成 0–5 条匿名听众实时弹幕，也可以一条不生成。弹幕正文写中文，可偶尔带翻译腔或韩语、日语、英语口癖；口癖不代表听众国籍。只反应已公开发言，不剧透、不泄露隐私。角色可以偶尔猜匿名弹幕是否来自用户，但绝不能确定，也不能把弹幕当成用户作为嘉宾在场。" : "",
       "",
       params.target === "character"
         ? '返回格式：{"question":"...","targetGuest":"...","reactions":["..."]}'
@@ -604,7 +606,7 @@ export async function generateInterviewAudienceReactions(params: {
   if (!params.options.audienceEnabled || params.transcript.length === 0) return [];
   const context = loadInterviewContextForGuests(params.characterIds, params.userIdentityId, params.options);
   const result = await callHostJson<{ reactions?: string[] }>(context,
-    "你只生成电台匿名听众弹幕。根据节目刚刚公开的发言，可以生成 0–5 条，也可没有。正文全部中文，可偶尔带翻译腔或日韩英语口癖，但不得据此确定发言者的国籍或身份。不能说出未公开的角色隐私。返回 JSON。",
+    contentPrompt('interview.audience') + "你只生成电台匿名听众弹幕。根据节目刚刚公开的发言，可以生成 0–5 条，也可没有。正文全部中文，可偶尔带翻译腔或日韩英语口癖，但不得据此确定发言者的国籍或身份。不能说出未公开的角色隐私。返回 JSON。",
     `${buildHostBriefing({ context, theme: params.theme, phase: "听众实时弹幕", transcript: params.transcript.slice(-9) })}\n返回格式：{"reactions":["..."]}`);
   return cleanArray(result?.reactions, 5, 100).filter(text => /[\u3400-\u9fff]/u.test(text));
 }
