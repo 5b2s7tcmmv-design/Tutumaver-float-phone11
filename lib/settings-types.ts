@@ -325,6 +325,8 @@ export type BindingSlot = {
 // Character binding: character defaults + per-app overrides
 export type CharacterBinding = {
     characterId: string;
+    /** Per preset/module stable ID; never stores a copy of preset text. */
+    presetModuleOverrides?: Record<string, Record<string, "inherit" | "enabled" | "disabled">>;
     defaults: BindingSlot;
     appOverrides: Partial<Record<string, BindingSlot>>;
 };
