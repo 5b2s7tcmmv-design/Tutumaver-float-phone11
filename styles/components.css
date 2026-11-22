@@ -6056,3 +6056,13 @@
 .quick-action-model-picker{display:flex;flex-direction:column;gap:8px;padding:8px 0 5px;min-width:0;}
 .quick-action-model-picker input,.quick-action-model-picker select{width:100%;min-width:0;max-width:100%;font:inherit;}
 .quick-action-model-picker small{font-size:calc(11px * var(--app-text-scale,1));line-height:1.4;opacity:.7;}
+
+/* Global text-image mask setting; uses current settings typography, not a separate design system. */
+.text-image-mask-setting{font:inherit;display:flex;flex-direction:column;gap:10px}
+.text-image-mask-heading{justify-content:flex-start}
+.text-image-mask-heading small{display:block;font:inherit;font-size:.88em;color:var(--c-text-secondary,#86868b);margin-top:3px}
+.text-image-mask-preview{display:flex;align-items:center;gap:14px;padding:5px 10px;min-height:88px}
+.text-image-mask-preview img{display:block;object-fit:contain;width:80px;height:80px;max-width:30%;border-radius:10px;border:1px solid var(--c-border,rgba(127,127,127,.18))}
+.text-image-mask-preview span{font:inherit;color:var(--c-text-secondary,#86868b);font-size:.92em}
+.text-image-mask-buttons{display:flex;gap:8px;padding:0 10px 8px;flex-wrap:wrap}
+.text-image-mask-buttons .ui-btn{font-family:inherit;font-size:calc(12px * var(--app-text-scale,1));min-height:36px;padding:7px 14px}
