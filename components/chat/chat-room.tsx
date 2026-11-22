@@ -7,7 +7,8 @@ import {markMediaSent, prepareSocialMedia} from '@/lib/social-media';
 import {ReversePhoneRecord,ReconciliationRecord,ReverseComposerStatus,useReverseVisit} from "./reverse-phone-overlay";
 import {captureSelectedChat} from "@/lib/chat-screenshot";
 import {ChatScreenshotPreview} from "./chat-screenshot-preview";
-import {Users,Share2,ScanLine,PhoneCall} from "lucide-react";
+import {Users,Share2,ScanLine,PhoneCall,Archive} from "lucide-react";
+import {archiveCallSnapshot} from "@/lib/chat-call-archives";
 import {startReversePhone,REVERSE_TYPE,grabReversePhone} from "@/lib/reverse-phone-runtime";
 import {useAppBack} from "@/lib/back-navigation";
 import { LivePhotoInput } from "./live-photo";
@@ -5440,7 +5441,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         return wrapperRef.current ? createPortal(menu, wrapperRef.current) : menu;
     };
 
-    const renderDeleteOnlyContextMenu = (onDelete: () => void, onMultiSelect?: () => void) => {
+    const renderDeleteOnlyContextMenu = (onDelete: () => void, onMultiSelect?: () => void, onArchive?: () => void) => {
         const menu = (
             <div
                 onPointerDown={e => e.stopPropagation()}
@@ -5448,6 +5449,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                 style={getContextMenuInitialStyle()}
                 className="ctx-menu chat-floating-ctx-menu flex py-[6px] px-0"
             >
+                {onArchive && <button type="button" aria-label="归档通话" title="归档通话" className="ctx-menu-btn" onClick={e => { e.stopPropagation(); onArchive(); closeContextMenu(); }}><Archive size={17}/></button>}
                 {onMultiSelect && (
                     <button
                         onClick={(e) => {
@@ -6275,6 +6277,17 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                                             groupMsgIds.forEach(id => deleteChatMessage(id));
                                             setMessages(prev => prev.filter(m => !groupMsgIds.includes(m.id)));
                                         });
+                                    }, undefined, () => {
+                                        const saved = archiveCallSnapshot({
+                                            sessionId: session.id,
+                                            sourceId: vcGroup.callId || vcGroup.manualId || vcGroup.startId,
+                                            kind: vcGroup.callType,
+                                            date: Date.parse(groupMessages[0]?.createdAt || "") || Date.now(),
+                                            duration: vcGroup.duration,
+                                            messages: groupMessages,
+                                            mode: "manual",
+                                        });
+                                        showChatToast(saved ? "已归档本次通话文字" : "没有可归档的通话内容");
                                     })}
                                 </div>
                                 {vcGroup.manualId && <button className="chat-multi-select-forward-btn" type="button" onClick={()=>{removeManualCallGroup(vcGroup.manualId!);setManualGroups(loadManualCallGroups());}}>取消整理，恢复消息</button>}
