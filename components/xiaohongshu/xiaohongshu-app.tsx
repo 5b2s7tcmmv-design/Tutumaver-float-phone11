@@ -1486,8 +1486,13 @@ export function XiaohongshuApp({ onClose, onNotice: externalNotice, visible = tr
     clearErrorState();
     try {
       const activeSettings = state.settings;
+      setBusy("more-comments");
+      const pendingNotes=loadXiaohongshuState().notes.filter(n=>n.comments.some(c=>c.pendingReply)).map(n=>n.id);
+      let failed=0;
+      for(const noteId of pendingNotes){try{await processNoteComments(noteId);}catch{failed++;}}
+      if(failed)onNotice?.(`${failed} 篇笔记暂未全部更新，已保留到下次刷新`);
       setBusy("npc-feed");
-      const { state: withNpc } = await generateNpcFeedState(state, activeSettings);
+      const { state: withNpc } = await generateNpcFeedState(loadXiaohongshuState(), activeSettings);
       setState(withNpc);
 
       if (activeSettings.participantCharacterIds.length > 0) {
@@ -1835,150 +1840,66 @@ export function XiaohongshuApp({ onClose, onNotice: externalNotice, visible = tr
   }
 
   async function submitUserComment(options: { mentionCharacter?: Character; textOverride?: string } = {}) {
-    const text = (options.textOverride ?? commentDraft).trim();
-    if (busy !== "idle" || !selectedNote || !text) return;
-    const target = replyTarget && selectedNote.comments.some(comment => comment.id === replyTarget.id)
-      ? replyTarget
-      : undefined;
-    const mentionCharacter = options.mentionCharacter ?? findMentionCharacterInText(text);
-    const userComment = makeXiaohongshuComment({
-      noteId: selectedNote.id,
-      authorType: "user",
-      authorId: "user",
-      authorName: state.profile.nickname || "我",
-      text,
-      replyTo: target?.authorName,
-      replyToCommentId: target?.id,
-    });
-    let current = saveXiaohongshuState({
-      ...state,
-      notes: state.notes.map(note => note.id === selectedNote.id
-        ? {
-            ...note,
-            comments: [...note.comments, userComment],
-            commentCount: note.commentCount + 1,
-            updatedAt: new Date().toISOString(),
-          }
-        : note),
-      userInteractions: {
-        ...state.userInteractions,
-        commentedNoteIds: addId(state.userInteractions.commentedNoteIds, selectedNote.id),
-      },
-    });
-    setState(current);
-    setCommentDraft("");
-    setCommentComposerFocused(false);
-    setCommentEmojiOpen(false);
-    setCommentMentionOpen(false);
-    setReplyTarget(null);
-    setBusy(mentionCharacter ? "mention-reply" : "comment-reply");
-    clearErrorState();
-    try {
-      let latestNote = current.notes.find(note => note.id === selectedNote.id);
-      if (!latestNote) return;
-      if (mentionCharacter) {
-        const reaction = await generateXiaohongshuCharacterMentionReply(mentionCharacter.id, latestNote, userComment, target, current.settings);
-        if (!reaction) {
-          onNotice?.("该角色暂时没有可用的小红书回复配置");
-          return;
-        }
-        if (reaction.comment.trim()) {
-          const applied = applyCharacterMentionReply(latestNote, mentionCharacter, reaction, userComment.id);
-          const addedComment = findAddedCharacterComment(latestNote, applied.note, mentionCharacter);
-          if (addedComment) {
-            recordXiaohongshuReplyEvent({
-              characterId: mentionCharacter.id,
-              characterName: mentionCharacter.name,
-              note: latestNote,
-              comment: addedComment,
-              targetComment: userComment,
-            });
-            recordCharacterThreadCommentEvents(mentionCharacter, latestNote, applied.note, applied.threadComments);
-            touchCharacterMemory(mentionCharacter);
-          }
-          current = saveXiaohongshuState({
-            ...current,
-            notes: current.notes.map(note => note.id === latestNote?.id ? applied.note : note),
-            notifications: [...applied.notifications, ...current.notifications],
-          });
-          setState(current);
-        }
-        return;
-      }
-      const roleCharacterId = target?.authorType === "character"
-        ? target.authorId
-        : latestNote.source === "character"
-          ? latestNote.authorId
-          : "";
-      const character = roleCharacterId ? characters.find(item => item.id === roleCharacterId) : undefined;
-      if (character) {
-        try {
-          const reaction = await generateXiaohongshuCharacterReplyToUserComment(character.id, latestNote, userComment, target, current.settings);
-          if (reaction?.comment.trim()) {
-            const applied = applyCharacterCommentReply(latestNote, character, reaction, userComment.id);
-            const addedComment = findAddedCharacterComment(latestNote, applied.note, character);
-            if (addedComment) {
-              recordXiaohongshuReplyEvent({
-                characterId: character.id,
-                characterName: character.name,
-                note: latestNote,
-                comment: addedComment,
-                targetComment: userComment,
-              });
-              recordCharacterThreadCommentEvents(character, latestNote, applied.note, applied.threadComments);
-              touchCharacterMemory(character);
-            }
-            current = saveXiaohongshuState({
-              ...current,
-              notes: current.notes.map(note => note.id === latestNote?.id ? applied.note : note),
-              notifications: [...applied.notifications, ...current.notifications],
-            });
-            setState(current);
-            latestNote = applied.note;
-          }
-        } catch (err) {
-          handleGenerationError(err, "暂时无法生成评论回复。");
-        }
-      }
-      const npcReply = await generateXiaohongshuNpcReplyToUserComment(latestNote, userComment, current.settings, target);
-      const npcApplied = applyNpcCommentReply(latestNote, npcReply, userComment.id);
-      current = saveXiaohongshuState({
-        ...current,
-        notes: current.notes.map(note => note.id === latestNote?.id ? npcApplied.note : note),
-        notifications: [...npcApplied.notifications, ...current.notifications],
-      });
-      setState(current);
-    } catch (err) {
-      handleGenerationError(err, mentionCharacter ? "暂时无法生成@回复。" : "暂时无法生成评论回复。");
-    } finally {
-      setBusy("idle");
-    }
+    const text=(options.textOverride??commentDraft).trim();
+    if(!selectedNote||!text)return;
+    const base=loadXiaohongshuState();
+    const note=base.notes.find(n=>n.id===selectedNote.id);if(!note)return;
+    const target=replyTarget&&note.comments.find(c=>c.id===replyTarget.id);
+    const mentioned=options.mentionCharacter??findMentionCharacterInText(text);
+    const characterId=mentioned?.id||(target?.authorType==='character'?target.authorId:note.source==='character'?note.authorId:undefined);
+    const comment={...makeXiaohongshuComment({noteId:note.id,authorType:'user',authorId:'user',authorName:base.profile.nickname||'我',text,replyTo:target?.authorName,replyToCommentId:target?.id}),pendingReply:true,pendingCharacterIds:characterId?[characterId]:[],npcReplyPending:!mentioned,mentionCharacterId:mentioned?.id};
+    setState(saveXiaohongshuState({...base,notes:base.notes.map(n=>n.id===note.id?{...n,comments:[...n.comments,comment],commentCount:n.commentCount+1,updatedAt:new Date().toISOString()}:n),userInteractions:{...base.userInteractions,commentedNoteIds:addId(base.userInteractions.commentedNoteIds,note.id)}}));
+    setCommentDraft('');setCommentComposerFocused(false);setCommentEmojiOpen(false);setCommentMentionOpen(false);setReplyTarget(null);
   }
 
-  function handleSubmitUserComment() {
-    void submitUserComment();
+  function handleSubmitUserComment(){void submitUserComment();}
+
+  /** Snapshot one note's pending IDs. Each successful batch commits independently from fresh storage. */
+  async function processNoteComments(noteId:string,includeIdle=false):Promise<void>{
+    const snapshot=loadXiaohongshuState().notes.find(n=>n.id===noteId);if(!snapshot)return;
+    const pending=snapshot.comments.filter(c=>c.authorType==='user'&&c.pendingReply);
+    const ids=new Set(pending.map(c=>c.id));
+    const issues:unknown[]=[];
+    const characterIds=[...new Set(pending.flatMap(c=>c.pendingCharacterIds||[]))];
+    for(const characterId of characterIds){
+      try{
+        const base=loadXiaohongshuState(),note=base.notes.find(n=>n.id===noteId);if(!note)continue;
+        const character=characters.find(c=>c.id===characterId);if(!character)throw Error('待回复角色已不存在');
+        const group=note.comments.filter(c=>ids.has(c.id)&&c.pendingCharacterIds?.includes(characterId));if(!group.length)continue;
+        const last=group[group.length-1],target=note.comments.find(c=>c.id===last.replyToCommentId);
+        // The original comment IDs remain intact; a single request sees every pending input in this character's group.
+        const batch={...last,text:group.map(c=>`[评论ID ${c.id}] ${c.text}`).join('\n')};
+        const mention=group.some(c=>c.mentionCharacterId===characterId);
+        const reaction=mention?await generateXiaohongshuCharacterMentionReply(characterId,note,batch,target,base.settings):await generateXiaohongshuCharacterReplyToUserComment(characterId,note,batch,target,base.settings);
+        if(!reaction)throw Error('角色没有可用的小红书回复配置');
+        const latest=loadXiaohongshuState(),current=latest.notes.find(n=>n.id===noteId);if(!current)continue;
+        const applied=mention?applyCharacterMentionReply(current,character,reaction,last.id):applyCharacterCommentReply(current,character,{...reaction,liked:"liked" in reaction&&reaction.liked===true,saved:"saved" in reaction&&reaction.saved===true,followedAuthor:"followedAuthor" in reaction&&reaction.followedAuthor===true},last.id);
+        const added=findAddedCharacterComment(current,applied.note,character);
+        if(added){recordXiaohongshuReplyEvent({characterId:character.id,characterName:character.name,note:current,comment:added,targetComment:last});recordCharacterThreadCommentEvents(character,current,applied.note,applied.threadComments);touchCharacterMemory(character);}
+        const groupIds=new Set(group.map(c=>c.id));
+        const updated={...applied.note,comments:applied.note.comments.map(c=>{if(!groupIds.has(c.id))return c;const rest=(c.pendingCharacterIds||[]).filter(id=>id!==characterId);return {...c,pendingCharacterIds:rest,pendingReply:rest.length>0||c.npcReplyPending===true};})};
+        setState(saveXiaohongshuState({...latest,notes:latest.notes.map(n=>n.id===noteId?updated:n),notifications:[...applied.notifications,...latest.notifications]}));
+      }catch(e){issues.push(e);}
+    }
+    const npcIds=new Set(pending.filter(c=>c.npcReplyPending).map(c=>c.id));
+    if(npcIds.size||(includeIdle&&!pending.length)){
+      try{
+        const base=loadXiaohongshuState(),note=base.notes.find(n=>n.id===noteId);if(!note)return;
+        const reaction=await generateXiaohongshuNpcMoreComments(note,base.settings);
+        if(!reaction.comments.some(c=>c.text.trim()))throw Error('没有解析到新的评论，待回应内容已保留');
+        const latest=loadXiaohongshuState(),current=latest.notes.find(n=>n.id===noteId);if(!current)return;
+        const applied=applyNpcMoreComments(current,reaction);
+        const notifications=applied.comments.filter(c=>!current.comments.some(old=>old.id===c.id)&&c.replyToCommentId&&current.comments.some(old=>old.id===c.replyToCommentId&&old.authorType==='user')).map(c=>makeXiaohongshuNotification({type:'comment',noteId,actorName:c.authorName,text:c.text,unread:true}));
+        const updated={...applied,comments:applied.comments.map(c=>npcIds.has(c.id)?{...c,npcReplyPending:false,pendingReply:(c.pendingCharacterIds?.length||0)>0}:c)};
+        setState(saveXiaohongshuState({...latest,notes:latest.notes.map(n=>n.id===noteId?updated:n),notifications:[...notifications,...latest.notifications]}));
+      }catch(e){issues.push(e);}
+    }
+    if(issues.length)throw issues[0];
   }
 
-  async function handleLoadMoreComments(note: XiaohongshuNote) {
-    if (busy !== "idle") return;
-    const latestNote = state.notes.find(item => item.id === note.id) ?? note;
-    setBusy("more-comments");
-    clearErrorState();
-    try {
-      const reaction = await generateXiaohongshuNpcMoreComments(latestNote, state.settings);
-      const addedCount = reaction.comments.filter(comment => comment.text).length;
-      if (addedCount === 0) throw new Error("没有解析到新的小红书评论。");
-      const updatedNote = applyNpcMoreComments(latestNote, reaction);
-      setState(saveXiaohongshuState({
-        ...state,
-        notes: state.notes.map(item => item.id === latestNote.id ? updatedNote : item),
-      }));
-      onNotice?.(`已加载 ${addedCount} 条新评论`);
-    } catch (err) {
-      handleGenerationError(err, "暂时无法加载更多评论。");
-    } finally {
-      setBusy("idle");
-    }
+  async function handleLoadMoreComments(note:XiaohongshuNote){
+    if(busy!=='idle')return;setBusy('more-comments');clearErrorState();
+    try{await processNoteComments(note.id,true);onNotice?.('评论已更新');}catch(e){handleGenerationError(e,'部分评论暂未更新，请稍后重试');}finally{setBusy('idle');}
   }
 
   function requestDeleteNote(note: XiaohongshuNote) {
@@ -2213,6 +2134,8 @@ export function XiaohongshuApp({ onClose, onNotice: externalNotice, visible = tr
       : note.imageDescription) || "";
     const share = {
       type: "xiaohongshu_note",
+      noteId: note.id,
+      comments: note.comments.slice(0,5).map(comment=>({...comment})),
       authorName: note.authorName,
       title: getXhsPlainText(note.title),
       body: getXhsPlainText(note.body),
