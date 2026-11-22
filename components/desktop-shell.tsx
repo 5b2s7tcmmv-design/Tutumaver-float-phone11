@@ -4738,6 +4738,8 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets, initialL
                 onExpand={handleMiniChatExpand}
               >
                 <PhoneChatApp
+                  key={miniShareSession?.request ?? 0}
+                  initialSessionId={miniShareSession?.id}
                   onClose={handleMiniChatClose}
                   onSessionChange={handleMiniChatSessionChange}
                   sharePayload={miniSharePayload}
