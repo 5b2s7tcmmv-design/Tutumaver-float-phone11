@@ -1,6 +1,7 @@
 "use client";
 import {TextImage} from "@/components/media/text-image";
 import { GroupShareTargets } from "@/components/chat/group-share-targets";
+import {openSharedChatSession} from '@/lib/chat-notification-events';
 
 import { resolveChatShareSession } from '@/lib/chat-share-targets';
 
