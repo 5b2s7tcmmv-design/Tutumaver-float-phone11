@@ -1,3 +1,4 @@
+import {applyPresetModuleOverrides} from "./preset-module-overrides";
 import { loadCharacters, saveCharacters } from "./character-storage";
 import { scopeUserIdentity, isUserKnowledgeLevel, userKnowledgeLevel } from "./user-knowledge";
 import type {
@@ -201,7 +202,7 @@ function stripRemovedBuiltinFeaturePrompts(preset: PresetConfig): PresetConfig {
     return { ...preset, prompts, prompt_order: promptOrder };
 }
 
-export function loadPresets(): PresetConfig[] {
+export function loadPresets(characterId?:string): PresetConfig[] {
     if (typeof window === "undefined") return [];
     try {
         const cachedPresets = readPresetsCache();
@@ -226,7 +227,7 @@ export function loadPresets(): PresetConfig[] {
             savePresets(presets);
         }
 
-        return presets;
+        return characterId ? presets.map(preset=>applyPresetModuleOverrides(preset,loadBindingConfig(),characterId)) : presets;
     } catch {
         return [];
     }
