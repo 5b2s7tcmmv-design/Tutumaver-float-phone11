@@ -74,7 +74,11 @@ import {
   recordXiaohongshuReplyEvent,
 } from "@/lib/xiaohongshu-memory";
 import { resolveCharacterXiaohongshuDisplayName } from "@/lib/xiaohongshu-character-profile";
-import type { ChatSharePayload } from "@/lib/chat-share";
+import { xiaohongshuShareMessage, type XiaohongshuNoteChatSharePayload } from "@/lib/chat-share";
+import { pushChatMessage as sendSharedChatMessage } from "@/lib/chat-storage";
+import { resolveChatShareSession } from "@/lib/chat-share-targets";
+import { openSharedChatSession } from "@/lib/chat-notification-events";
+import { ChatSharePicker } from "@/components/chat/chat-share-picker";
 import { CheckPhoneDebugErrorCard } from "@/components/checkphone/checkphone-debug-error-card";
 import {
   DEFAULT_XIAOHONGSHU_SETTINGS,
@@ -741,6 +745,8 @@ export function XiaohongshuApp({ onClose, onNotice: externalNotice, visible = tr
   const [profileOpen, setProfileOpen] = useState(false);
   const [composeOpen, setComposeOpen] = useState(false);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
+  const [pendingNoteShare, setPendingNoteShare] = useState<XiaohongshuNoteChatSharePayload | null>(null);
+  const noteShareDispatching = useRef(false);
   const [busy, setBusy] = useState<BusyState>("idle");
   const { onNotice, feedback: generationFeedback } = useGenerationFeedback(busy !== "idle" ? ({"npc-feed":"正在生成小红书内容…","character-activity":"正在生成角色动态与互动…","publish":"正在发布笔记…","npc-reaction":"正在生成网友反馈…","character-reaction":"正在生成角色反馈…","comment-reply":"正在生成评论回复…","mention-reply":"正在生成 @ 回复…","more-comments":"正在生成更多评论…","dm-reply":"正在生成私信回复…"} as Record<string,string>)[busy] : null, externalNotice, visible);
   const [error, setError] = useState("");
@@ -2145,9 +2151,9 @@ export function XiaohongshuApp({ onClose, onNotice: externalNotice, visible = tr
       imageAssetId: note.imageAssetId,
       coverIcon: note.coverIcon,
       tone: note.tone,
-    } satisfies ChatSharePayload;
-    window.dispatchEvent(new CustomEvent("open-mini-chat", { detail: { share } }));
-    onNotice?.("选择聊天对象后发送小红书帖子");
+    } satisfies XiaohongshuNoteChatSharePayload;
+    noteShareDispatching.current = false;
+    setPendingNoteShare(share);
   }
 
   function getSiblingVideo(direction: "previous" | "next") {
@@ -2408,6 +2414,20 @@ export function XiaohongshuApp({ onClose, onNotice: externalNotice, visible = tr
   return (
     <section className="xhs-app cp-xhs-module">
       {generationFeedback}
+      {pendingNoteShare && <ChatSharePicker title="分享帖子到 Chat" onClose={() => setPendingNoteShare(null)} onSelect={target => {
+        if (noteShareDispatching.current) return;
+        noteShareDispatching.current = true;
+        try {
+          const session = resolveChatShareSession(target);
+          sendSharedChatMessage(xiaohongshuShareMessage(session.id, pendingNoteShare));
+          setPendingNoteShare(null);
+          openSharedChatSession(session.id);
+        } catch (error) {
+          noteShareDispatching.current = false;
+          onNotice?.(error instanceof Error ? error.message : "分享失败");
+        }
+      }}/> }
+
       {selectedTab !== "profile" && !selectedNote && !selectedDmThread ? (
         <header className="cp-xhs-appbar xhs-appbar">
           <button
