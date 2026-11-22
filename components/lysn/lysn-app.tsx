@@ -1,4 +1,5 @@
 "use client";
+import {TextImage} from "@/components/media/text-image";
 
 import { AudioSourcePicker } from "@/components/audio-source-picker";
 import { DEFAULT_LYSN_SOUND } from "@/lib/default-notification-sounds";
@@ -748,8 +749,8 @@ export function LysnApp({ onClose, onNotice }: { onClose: () => void; onNotice?:
           {m.sender === "artist" && <div className={styles.senderLine}><ArtistBadge/><b>{displayName}</b></div>}
           {m.quote && <div className={styles.quoteBubble}><span>ARTIST 的回复：</span><p>{showName(m.quote.original)}</p><small>{showName(m.quote.translated)}</small></div>}
           <div className={`${styles.bubble} ${m.kind === "voice" ? styles.voiceBubbleShell : ""} ${m.kind === "photo" ? styles.photoBubbleOnly : ""}`} onClick={bubbleClick}>
-            {m.kind === "photo" && m.imageUrl && <button type="button" className={styles.photoButton} onClick={() => setViewerUrl(m.imageUrl || "")}><AssetImage src={m.imageUrl} className={styles.photo}/></button>}
-            {m.kind === "photo" && !m.imageUrl && <button type="button" className={styles.textPhoto} onClick={() => openEditMessage(m)}><span className={styles.photoTextScroll}>{m.photoDescription || m.original}</span></button>}
+            {m.kind === "photo" && m.photoId && m.imageUrl && <button type="button" className={styles.photoButton} onClick={() => setViewerUrl(m.imageUrl || "")}><AssetImage src={m.imageUrl} className={styles.photo}/></button>}
+            {m.kind === "photo" && !m.photoId && <UnifiedLysnImage message={m}/>}
             {m.kind === "sticker" && m.imageUrl && <AssetImage src={m.imageUrl} className={styles.stickerBubble}/>}
             {m.kind === "voice" && <VoicePlayer message={m} onNotice={onNotice} />}
             {m.kind !== "sticker" && m.kind !== "voice" && m.kind !== "photo" && <p>{showName(displayText)}</p>}
@@ -826,7 +827,7 @@ export function LysnApp({ onClose, onNotice }: { onClose: () => void; onNotice?:
 
       {rerollTarget && <div className={styles.overlay} onMouseDown={e => { if (e.target === e.currentTarget) setRerollTarget(null); }}><section className={`${styles.sheet} ${styles.actionSheet}`} role="dialog" aria-label="重回消息"><button type="button" className={styles.actionSheetButton} onClick={() => { void rerollMessage(rerollTarget, "single"); }}><RotateCcw size={18}/>重回本条</button><button type="button" className={styles.actionSheetButton} onClick={() => { void rerollMessage(rerollTarget, "session"); }}><RotateCcw size={18}/>重回本次</button><button type="button" className={styles.actionCancel} onClick={() => setRerollTarget(null)}>取消</button></section></div>}
 
-      {editDraft && <div className={styles.overlay} onMouseDown={e => { if (e.target === e.currentTarget) setEditDraft(null); }}><section className={`${styles.sheet} ${styles.editMessageSheet}`} role="dialog" aria-label="编辑消息"><header><b>{editDraft.kind === "photo" ? "编辑照片描述" : "编辑消息"}</b><button type="button" onClick={() => setEditDraft(null)} aria-label="关闭"><X size={20}/></button></header><div className={styles.editMessageFields}><label className={styles.field}><span>{editDraft.kind === "photo" ? "画面描述" : "原文"}</span><textarea value={editDraft.original} onChange={e => setEditDraft(prev => prev ? { ...prev, original: e.target.value } : prev)} /></label>{editDraft.sender === "artist" && editDraft.kind !== "photo" && <label className={styles.field}><span>翻译</span><textarea value={editDraft.translated} onChange={e => setEditDraft(prev => prev ? { ...prev, translated: e.target.value } : prev)} /></label>}</div><button type="button" className={styles.primaryButton} disabled={!editDraft.original.trim()} onClick={saveEditedMessage}>{editDraft.kind === "photo" ? "仅保存文字" : "保存修改"}</button>{editDraft.kind === "photo" && <button type="button" className={styles.primaryButton} disabled={!editDraft.original.trim()} onClick={() => void generateEditedPhoto()}>开始生图</button>}</section></div>}
+      {editDraft && <div className={styles.overlay} onMouseDown={e => { if (e.target === e.currentTarget) setEditDraft(null); }}><section className={`${styles.sheet} ${styles.editMessageSheet}`} role="dialog" aria-label="编辑消息"><header><b>{editDraft.kind === "photo" ? "编辑照片描述" : "编辑消息"}</b><button type="button" onClick={() => setEditDraft(null)} aria-label="关闭"><X size={20}/></button></header><div className={styles.editMessageFields}><label className={styles.field}><span>{editDraft.kind === "photo" ? "画面描述" : "原文"}</span><textarea value={editDraft.original} onChange={e => setEditDraft(prev => prev ? { ...prev, original: e.target.value } : prev)} /></label>{editDraft.sender === "artist" && editDraft.kind !== "photo" && <label className={styles.field}><span>翻译</span><textarea value={editDraft.translated} onChange={e => setEditDraft(prev => prev ? { ...prev, translated: e.target.value } : prev)} /></label>}</div><button type="button" className={styles.primaryButton} disabled={!editDraft.original.trim()} onClick={saveEditedMessage}>{editDraft.kind === "photo" ? "仅保存文字" : "保存修改"}</button>{editDraft.kind === "photo" && state.messages.find(m=>m.id===editDraft.id) && <UnifiedLysnImage message={state.messages.find(m=>m.id===editDraft.id)!}/>}</section></div>}
 
       {viewerUrl && <div className={styles.imageViewer} role="dialog" aria-label="查看图片" onClick={() => setViewerUrl("")}><button type="button" aria-label="关闭图片"><X size={26}/></button><AssetImage src={viewerUrl}/></div>}
 
@@ -874,7 +875,7 @@ function PhotoStack({ rows, onOpen, onEdit }: { rows: LysnMessage[]; onOpen: (ur
     setDragging(true);
     clearHold();
     const selected = rows[current];
-    holdTimer.current = window.setTimeout(() => {
+    if(!(event.target as HTMLElement).closest('.unified-text-image'))holdTimer.current = window.setTimeout(() => {
       longPressed.current = true;
       pointer.current = null;
       setDragging(false);
@@ -916,11 +917,11 @@ function PhotoStack({ rows, onOpen, onEdit }: { rows: LysnMessage[]; onOpen: (ur
     }
   };
   if (expanded) return <div className={`${styles.photoExpanded} ${mine ? "lysn-photo-expanded--mine" : "lysn-photo-expanded--artist"}`}>
-    <div className={styles.photoExpandedGrid}>{rows.map((row, index) => <button type="button" key={row.id}
+    <div className={styles.photoExpandedGrid}>{rows.map((row, index) => <div role="button" tabIndex={0} key={row.id}
       onClick={() => row.imageUrl ? onOpen(row.imageUrl) : onEdit(row)}
       onContextMenu={e => { e.preventDefault(); onEdit(row); }} aria-label={`查看照片 ${index + 1}`}>
-      {row.imageUrl ? <AssetImage src={row.imageUrl}/> : <span className={styles.photoTextCard}><span className={styles.photoTextScroll}>{row.photoDescription || row.original}</span></span>}
-    </button>)}</div><button type="button" className={styles.photoViewAll} onClick={() => setExpanded(false)}>收起照片</button>
+      {row.photoId && row.imageUrl ? <AssetImage src={row.imageUrl}/> : <UnifiedLysnImage message={row}/>}
+    </div>)}</div><button type="button" className={styles.photoViewAll} onClick={() => setExpanded(false)}>收起照片</button>
   </div>;
   return <div className={`${styles.stackWrap} ${mine ? styles.stackMine : ''}`}>
     <div className={styles.photoDeck} role="group" tabIndex={0} aria-label={`${rows.length} 张照片，左右滑动翻页`}
@@ -934,10 +935,12 @@ function PhotoStack({ rows, onOpen, onEdit }: { rows: LysnMessage[]; onOpen: (ur
         return <div key={row.id} aria-hidden={!front} className={styles.photoCard}
           style={{ ...motion, transition: dragging ? 'none' : undefined }}
           onContextMenu={front ? event => { event.preventDefault(); onEdit(row); } : undefined}>
-          {row.imageUrl ? <AssetImage src={row.imageUrl}/> : <span className={styles.photoTextCard}><span className={styles.photoTextScroll}>{row.photoDescription || row.original}</span></span>}
+          {row.photoId && row.imageUrl ? <AssetImage src={row.imageUrl}/> : <UnifiedLysnImage message={row}/>}
         </div>;
       })}
     </div>
     <div className={styles.photoDeckControls}><button type="button" className={styles.photoViewAll} onClick={() => setExpanded(true)}>展开全部 {rows.length}</button></div>
   </div>;
 }
+
+function UnifiedLysnImage({message}:{message:LysnMessage}){return <TextImage appId="lysn" contentId={message.id} prompt={message.photoDescription||message.original} characterId={message.characterId} initialRef={message.imageUrl} natural onApply={(ref,prompt)=>{const state=loadLysn();state.messages=state.messages.map(m=>m.id===message.id?{...m,imageUrl:ref,photoDescription:prompt,photoId:undefined}:m);saveLysn(state);}}/>;}
