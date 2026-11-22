@@ -41,6 +41,14 @@ on:
       - "lib/text-image-storage.ts"
       - "lib/elevenlabs-models.ts"
       - "scripts/check-resource076-music.cjs"
+      - "scripts/check-resource077.cjs"
+      - "lib/chat-share.ts"
+      - "lib/novel-engine.ts"
+      - "lib/icity-share.ts"
+      - "components/weverse/**"
+      - "components/question-box/**"
+      - "components/theqoo/**"
+      - "components/xiaohongshu/**"
       - "scripts/check-offline-speech-scenes.cjs"
   workflow_dispatch:
 jobs:
@@ -60,6 +68,8 @@ jobs:
         run: node scripts/check-browser-009.cjs
       - name: Phone inspection revocation regression
         run: node scripts/check-inspection-revocation.cjs
+      - name: Resource 077 Browser and text-image regression
+        run: node scripts/check-resource077.cjs
       - name: Offline music context regression
         run: node scripts/check-resource076-music.cjs
       - name: Offline scenes regression
