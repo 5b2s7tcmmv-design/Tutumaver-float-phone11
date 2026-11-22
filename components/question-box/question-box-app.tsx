@@ -1,4 +1,5 @@
 "use client";
+import {openSharedChatSession} from "@/lib/chat-notification-events";
 import {useSnapshotNavigation} from "@/lib/shared-snapshot-navigation";
 import { AppNotificationSetting, useSocialNotices } from "@/components/social/app-notifications";
 import { readSocialTarget } from "@/lib/social-notifications";
@@ -201,8 +202,7 @@ export function QuestionBoxApp({ onClose, onNotice }: { onClose: () => void; onN
     });
     setModal(null);
     setShare(null);
-    window.dispatchEvent(new CustomEvent("chat-messages-updated", { detail: { sessionId: session.id } }));
-    window.dispatchEvent(new CustomEvent("open-app", { detail: { appId: "chat", sessionId: session.id } }));
+    openSharedChatSession(session.id);
   };
   const questionCard = (row: BoxQuestion) => <article key={row.id} className={styles.questionCard}>
     <div className={styles.questionTop}><span>匿名提问</span><span>{at(row.createdAt)}</span></div>

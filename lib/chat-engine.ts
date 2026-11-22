@@ -1,3 +1,4 @@
+import {imagePromptLanguageInstruction} from './image-prompt-language';
 import { MUSIC_SHARE_FORMAT_INSTRUCTION } from "./music-share-format";
 import {inspectionIntentInstruction,extractInspectionIntent,inspectionStreamFilter} from './phone-inspection-settings';
 import {phoneKnowledge,applyPhoneControl,phoneTextStream} from "./checkphone-access";
@@ -599,6 +600,7 @@ async function applyChatPluginLlmRequest<T extends { role: string }>(
     purpose: string,
     sessionId?: string,
 ): Promise<{ messages: T[]; preset: PresetConfig | null }> {
+    messages=[{role:"system",content:imagePromptLanguageInstruction()} as unknown as T,...messages];
     if (typeof window === "undefined") return { messages, preset };
     const payload = await runChatPluginTransform("llm.request", {
         messages: messages as unknown as LlmRequestPayload["messages"],

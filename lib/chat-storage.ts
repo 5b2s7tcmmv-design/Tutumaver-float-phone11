@@ -319,6 +319,8 @@ export type ChatMessage = {
         appName?: string;
         appCardTitle?: string;
         twitterPostSnapshot?:import("./twitter-storage").TwitterSnapshot;
+        browserVideoSnapshot?:import("./browser-video-share").BrowserVideoSnapshot;
+        browserShareOperationId?:string;
         cityDiarySnapshot?: {id?:string;createdAt?:string;translation?:string;title:string;text:string;handle:string;photos?:string[];photoDescriptions?:string[]};
         novelChapterSnapshot?: import("./shared-snapshot").NovelChapterSnapshot;
         weverseReplaySnapshot?: import("./shared-snapshot").WeverseReplaySnapshot;

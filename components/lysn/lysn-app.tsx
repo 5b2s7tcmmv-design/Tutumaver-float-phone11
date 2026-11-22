@@ -943,4 +943,4 @@ function PhotoStack({ rows, onOpen, onEdit }: { rows: LysnMessage[]; onOpen: (ur
   </div>;
 }
 
-function UnifiedLysnImage({message}:{message:LysnMessage}){return <TextImage appId="lysn" contentId={message.id} prompt={message.photoDescription||message.original} characterId={message.characterId} initialRef={message.imageUrl} natural onApply={(ref,prompt)=>{const state=loadLysn();state.messages=state.messages.map(m=>m.id===message.id?{...m,imageUrl:ref,photoDescription:prompt,photoId:undefined}:m);saveLysn(state);}}/>;}
+function UnifiedLysnImage({message}:{message:LysnMessage}){return <TextImage appId="lysn" contentId={message.id} prompt={message.photoDescription||message.original} characterId={message.sender==='artist'?message.characterId:undefined} initialRef={message.imageUrl} natural onApply={(ref,prompt)=>{const state=loadLysn();state.messages=state.messages.map(m=>m.id===message.id?{...m,imageUrl:ref,photoDescription:prompt,photoId:undefined}:m);saveLysn(state);}}/>;}

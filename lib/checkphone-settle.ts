@@ -1,3 +1,4 @@
+import {registerPendingBrowserShares} from './browser-video-share';
 import {commitPlayVisit,playThreads,updatePlayKnowledge,getPlayThread,patchPlayThread} from './checkphone-play';
 import {phoneVisits,phoneAccess,setPhonePassword,savePhoneVisit,phoneKnowledge,applyPhoneControl,type PhoneVisit} from './checkphone-access';
 import {requestPhonePlay} from './checkphone-engine';
@@ -10,6 +11,7 @@ export async function settlePhoneVisit(visit:PhoneVisit){
  catch(e){const current=phoneVisits().find(v=>v.id===visit.id);if(current)savePhoneVisit({...current,settleError:String(e)});throw e;}finally{running.delete(visit.id);}
 }
 async function runSettlement(visit:PhoneVisit){
+ registerPendingBrowserShares(visit);
  commitPlayVisit(visit);
  const reports:string[]=[];
  for(const thread of playThreads(visit.id)){

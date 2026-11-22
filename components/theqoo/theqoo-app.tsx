@@ -1,6 +1,7 @@
 "use client";
 import {TextImage} from "@/components/media/text-image";
 import { GroupShareTargets } from "@/components/chat/group-share-targets";
+import {openSharedChatSession} from '@/lib/chat-notification-events';
 
 import { resolveChatShareSession } from '@/lib/chat-share-targets';
 
@@ -440,10 +441,9 @@ export function TheqooApp({ onClose, onNotice: externalNotice, visible = true, o
         appCardLayout: { appLabel: "theqoo", subtitle: CAT_ZH[selected.category] || selected.category, body: cardBody.slice(0, 110), accentColor: "#315777" },
       },
     });
-    window.dispatchEvent(new CustomEvent("chat-messages-updated", { detail: { sessionId: session.id } }));
     setShareOpen(false);
     onNotice?.("已分享到 Chat。");
-    window.dispatchEvent(new CustomEvent("open-app", { detail: { appId: "chat", sessionId: session.id } }));
+    openSharedChatSession(session.id);
   };
 
   const translation = (key: string, original: string, translated: string) => {

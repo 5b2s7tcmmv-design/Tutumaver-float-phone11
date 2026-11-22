@@ -1,4 +1,4 @@
-import { CALENDAR_LIFE_GENERATION_PROMPT } from "./calendar-generation-prompt";
+import { CALENDAR_SCHEDULE_CONTRACT } from "./calendar-generation-prompt";
 // lib/builtin-preset.ts
 // Factory function for the built-in default preset.
 // Contains all standard chat functionality entries that were previously hardcoded.
@@ -8,6 +8,27 @@ import { getCheckPhonePromptTags } from "./checkphone-config";
 
 export const BUILTIN_PRESET_ID = "builtin_default_v1";
 export const BUILTIN_PRESET_VERSION = 265; // 升版本会用出厂内容重写用户的内置预设副本（自定义会丢），非必要不升
+
+const CHAT_IMMERSION_INSTRUCTION = [
+    "以{{char}}的身份和{{user}}自然聊天，贴合人设、双方关系和当下语境，使用日常聊天口吻。",
+    "已有日程只用作理解近况的背景。可以自然聊到行程，但不要把日历生成结果、日程字段或结构化安排当作聊天正文输出。",
+    "按本轮聊天格式回复。",
+].join("\n");
+
+/** Repair only the saved built-in entry that contains the misplaced calendar prompt. */
+export function repairBuiltinChatImmersion(preset: PresetConfig): PresetConfig {
+    if (!preset.builtIn) return preset;
+    const index = preset.prompts?.findIndex(prompt =>
+        prompt.identifier === "chat_immersion_instruction"
+        && typeof prompt.content === "string"
+        && prompt.content.trimEnd().endsWith("\n" + CALENDAR_SCHEDULE_CONTRACT),
+    ) ?? -1;
+    if (index < 0) return preset;
+
+    const prompts = [...preset.prompts];
+    prompts[index] = { ...prompts[index], content: CHAT_IMMERSION_INSTRUCTION };
+    return { ...preset, prompts };
+}
 
 export function createBuiltinPreset(): PresetConfig {
     const now = Date.now();
@@ -120,7 +141,7 @@ export function createBuiltinPreset(): PresetConfig {
                 identifier: "chat_immersion_instruction",
                 name: "▸ 微信体沉浸指令",
                 role: "system",
-                content: CALENDAR_LIFE_GENERATION_PROMPT,
+                content: CHAT_IMMERSION_INSTRUCTION,
                 injection_position: 0,
                 injection_depth: 0,
                 enabled: true,
