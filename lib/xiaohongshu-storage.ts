@@ -243,6 +243,10 @@ export function normalizeXiaohongshuComment(raw: unknown, fallbackNoteId = ""): 
     disliked: record.disliked === true,
     createdAt,
     unread: record.unread === true,
+    pendingReply: record.pendingReply === true,
+    pendingCharacterIds: Array.isArray(record.pendingCharacterIds)?record.pendingCharacterIds.filter((v):v is string=>typeof v==="string"):undefined,
+    npcReplyPending: record.npcReplyPending === true,
+    mentionCharacterId: typeof record.mentionCharacterId==="string"?record.mentionCharacterId:undefined,
   };
 }
 
