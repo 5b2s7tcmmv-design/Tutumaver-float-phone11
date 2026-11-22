@@ -415,7 +415,7 @@ export async function generateCalendarScheduleRange(
         const activation = boundIds.map(id => resolved[ids.indexOf(id)]?.contextSummary || "").join("\n");
         const entries = (book.entries || []).filter(entry => !entry.disable && isWorldBookEntryActivated(entry, activation));
         if (!entries.length) return [];
-        const content = entries.sort((a, b) => (a.insertion_order ?? 50) - (b.insertion_order ?? 50))
+        const content = entries
           .map(entry => entry.content.replace(/\{\{char\}\}/gi, names.join("、"))).join("\n\n");
         return [`【世界书：${book.name}｜仅适用于：${names.join("、")}】\n${content}`];
       }).join("\n\n");
