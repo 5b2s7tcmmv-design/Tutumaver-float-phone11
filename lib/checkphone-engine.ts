@@ -4276,118 +4276,151 @@ export async function generateCheckPhoneMessages(
   }
 }
 
-
-
-
-
-
+/** Ordinary reverse-phone browser only. The independent special-site browser is untouched. */
 function normalizeBrowserPayload(payload: unknown): CheckPhoneBrowserPayload | null {
-  if (!payload || typeof payload !== "object") return null;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
   const record = payload as Record<string, unknown>;
-  const historyRaw = Array.isArray(record.history) ? record.history : [];
-  const bookmarksRaw = Array.isArray(record.bookmarks) ? record.bookmarks : [];
-
-  const history = historyRaw
-    .map((item) => {
-      if (!item || typeof item !== "object") return null;
+  const firstArray = (...names: string[]): unknown[] => {
+    for (const name of names) if (Array.isArray(record[name])) return record[name] as unknown[];
+    return [];
+  };
+  const value = (entry: Record<string, unknown>, ...keys: string[]): string => {
+    for (const key of keys) {
+      const item = entry[key];
+      if (typeof item === "string" && item.trim()) return item.trim();
+      if (typeof item === "number" && Number.isFinite(item)) return String(item);
+    }
+    return "";
+  };
+  const history = firstArray("history", "historyRecords", "browsingHistory", "浏览记录", "历史记录")
+    .map((item, index) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return null;
       const entry = item as Record<string, unknown>;
-      const id = typeof entry.id === "string" && entry.id.trim() ? entry.id.trim() : "";
-      const title = typeof entry.title === "string" ? entry.title.trim() : "";
-      const urlLabel = typeof entry.urlLabel === "string" ? entry.urlLabel.trim() : "";
-      const createdAt = typeof entry.createdAt === "string" ? entry.createdAt.trim() : "";
-      const content = typeof entry.content === "string" ? entry.content.trim() : "";
-      const context = typeof entry.context === "string" ? entry.context.trim() : "";
-      const innerThought = typeof entry.innerThought === "string" ? entry.innerThought.trim() : "";
-      if (!id || !title || !urlLabel || !createdAt || !content) return null;
-      return { id, title, urlLabel, createdAt, content, context, innerThought };
-    })
-    .filter(Boolean) as CheckPhoneBrowserPayload["history"];
-
-  const bookmarks = bookmarksRaw
-    .map((item) => {
-      if (!item || typeof item !== "object") return null;
+      const title = value(entry, "title", "name", "pageTitle", "标题", "网页标题");
+      const urlLabel = value(entry, "urlLabel", "url", "link", "website", "网址", "链接", "网站");
+      const content = value(entry, "content", "description", "summary", "snippet", "内容", "简介", "摘要");
+      // A title is the only indispensable identity. Never invent a website URL.
+      if (!title) return null;
+      const rawDate = value(entry, "createdAt", "visitedAt", "visitTime", "time", "时间", "访问时间");
+      const createdAt = rawDate && Number.isFinite(Date.parse(rawDate)) ? rawDate : new Date().toISOString();
+      return {
+        id: value(entry, "id", "记录ID") || `history${index + 1}`,
+        title,
+        urlLabel: urlLabel || "未记录网址",
+        createdAt,
+        content: content || title,
+        context: value(entry, "context", "scene", "情境", "当时情境"),
+        innerThought: value(entry, "innerThought", "thought", "内心", "想法"),
+      };
+    }).filter(Boolean) as CheckPhoneBrowserPayload["history"];
+  const bookmarks = firstArray("bookmarks", "favorites", "saved", "收藏夹", "收藏记录", "收藏")
+    .map((item, index) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return null;
       const entry = item as Record<string, unknown>;
-      const id = typeof entry.id === "string" && entry.id.trim() ? entry.id.trim() : "";
-      const title = typeof entry.title === "string" ? entry.title.trim() : "";
-      const urlLabel = typeof entry.urlLabel === "string" ? entry.urlLabel.trim() : "";
-      const categoryLabel = typeof entry.categoryLabel === "string" ? entry.categoryLabel.trim() : "";
-      const content = typeof entry.content === "string" ? entry.content.trim() : "";
-      const reason = typeof entry.reason === "string" ? entry.reason.trim() : "";
-      if (!id || !title || !urlLabel || !categoryLabel) return null;
-      return { id, title, urlLabel, categoryLabel, content, reason };
-    })
-    .filter(Boolean) as CheckPhoneBrowserPayload["bookmarks"];
-
-  if (history.length === 0 && bookmarks.length === 0) return null;
-
+      const title = value(entry, "title", "name", "pageTitle", "标题", "网页标题");
+      if (!title) return null;
+      return {
+        id: value(entry, "id", "收藏ID") || `bookmark${index + 1}`,
+        title,
+        urlLabel: value(entry, "urlLabel", "url", "link", "website", "网址", "链接", "网站") || "未记录网址",
+        categoryLabel: value(entry, "categoryLabel", "category", "分类", "类别") || "收藏",
+        content: value(entry, "content", "description", "summary", "内容", "简介"),
+        reason: value(entry, "reason", "saveReason", "收藏原因", "原因"),
+      };
+    }).filter(Boolean) as CheckPhoneBrowserPayload["bookmarks"];
+  if (!history.length && !bookmarks.length) return null;
   return {
-    headerTitle: typeof record.headerTitle === "string" && record.headerTitle.trim() ? record.headerTitle.trim() : "浏览器",
-    headerSubtitle:
-      typeof record.headerSubtitle === "string" && record.headerSubtitle.trim() ? record.headerSubtitle.trim() : "历史记录与收藏夹",
-    history: history.slice().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    headerTitle: value(record, "headerTitle", "页面标题") || "浏览器",
+    headerSubtitle: value(record, "headerSubtitle", "副标题") || "历史记录与收藏夹",
+    history: history.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)),
     bookmarks,
   };
 }
 
-function extractBrowserSection(source: string, heading: string): string {
-  const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = source.match(new RegExp(`^#\\s*${escaped}\\s*$`, "m"));
-  if (!match || match.index === undefined) return "";
-  const start = match.index + match[0].length;
-  const next = source.slice(start).match(/^#(?!#)\s*\S.*$/m);
-  const end = next?.index === undefined ? source.length : start + next.index;
-  return source.slice(start, end).trim();
-}
-
-function parseBrowserEntryBlocks(section: string, label: string): Array<{ order: string; fields: Record<string, string> }> {
-  const matches = [...section.matchAll(new RegExp(`^##\\s*${label}(\\d+)\\s*$`, "gm"))];
-  return matches.map((current, index) => {
-    const next = matches[index + 1];
-    const start = (current.index ?? 0) + current[0].length;
-    const end = next?.index ?? section.length;
-    return {
-      order: current[1] || String(index + 1),
-      fields: parseTakeoutTaggedFields(section.slice(start, end).trim()),
-    };
-  });
+function parseBrowserLooseFields(block: string): Record<string, string> {
+  // First keep the legacy [标题]... format; additionally accept 标题: ...,
+  // - 标题：..., **标题**: ... and multi-line fields.
+  const fields: Record<string, string> = {};
+  let current = "";
+  for (const raw of block.replace(/\r/g, "").split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    const match = line.match(/^(?:[-*•]\s*)?(?:\[([^\]]+)\]|\*\*([^*]+)\*\*|([^：:]{1,16}))\s*[：:]?\s*(.*?)\s*$/);
+    const name = (match?.[1] || match?.[2] || match?.[3] || "").trim();
+    if (match && /^(标题|网页标题|名称|网址|网站|链接|URL|时间|访问时间|内容|简介|摘要|情境|当时情境|内心|想法|分类|类别|收藏原因|原因)$/i.test(name)) {
+      current = name; fields[current] = match[4] || "";
+    } else if (current) fields[current] = `${fields[current]}\n${line}`.trim();
+  }
+  return fields;
 }
 
 function parseBrowserBlockPayload(text: string): PhoneBlockParseResult {
   const source = stripJsonWrapperNoise(text).replace(/\r/g, "").trim();
   if (!source) return { parsed: null, sanitizedCandidate: "", parseMode: "failed", parseError: "LLM 返回为空" };
-  const historySection = extractBrowserSection(source, "历史记录");
-  const bookmarksSection = extractBrowserSection(source, "收藏夹");
-  if (!historySection && !bookmarksSection) {
-    return { parsed: null, sanitizedCandidate: source, parseMode: "failed", parseError: "未找到 #历史记录 或 #收藏夹 分区" };
+  // Models sometimes return a perfectly usable JSON object instead of tagged blocks.
+  const json = parseCheckPhoneJson(source);
+  if (normalizeBrowserPayload(json.parsed)) {
+    return { parsed: json.parsed, sanitizedCandidate: json.sanitizedCandidate, parseMode: json.parseMode === "raw" ? "sanitized" : json.parseMode };
   }
-  const history = parseBrowserEntryBlocks(historySection, "记录")
-    .map(({ order, fields }) => ({
-      id: `history${order}`,
-      title: fields["标题"] || "",
-      urlLabel: fields["网址"] || "",
-      createdAt: fields["时间"] || new Date().toISOString(),
-      content: fields["内容"] || "",
-      context: fields["情境"] || "",
-      innerThought: fields["内心"] || "",
-    }))
-    .filter((item) => item.title && item.urlLabel);
-  const bookmarks = parseBrowserEntryBlocks(bookmarksSection, "收藏")
-    .map(({ order, fields }) => ({
-      id: `bookmark${order}`,
-      title: fields["标题"] || "",
-      urlLabel: fields["网址"] || "",
-      categoryLabel: fields["分类"] || "收藏",
-      content: fields["内容"] || "",
-      reason: fields["收藏原因"] || "",
-    }))
-    .filter((item) => item.title && item.urlLabel);
-  const parsed = {
-    headerTitle: "浏览器",
-    headerSubtitle: "历史记录与收藏夹",
-    history,
-    bookmarks,
+  const headings = [...source.matchAll(/^\s{0,3}#{1,3}\s*(历史记录|浏览记录|浏览历史|历史|收藏夹|书签|收藏记录|收藏)\s*[：:]*\s*$/gm)];
+  const sections: Record<string, string[]> = { history: [], bookmarks: [] };
+  const isHistory = (name: string) => /历史|浏览/.test(name);
+  if (headings.length) {
+    for (let i = 0; i < headings.length; i++) {
+      const current = headings[i];
+      const start = (current.index ?? 0) + current[0].length;
+      const end = headings[i + 1]?.index ?? source.length;
+      sections[isHistory(current[1]) ? "history" : "bookmarks"].push(source.slice(start, end));
+    }
+  } else {
+    // Some models omit the section headings but still output ##记录1 / ##收藏1.
+    sections.history.push(source);
+    sections.bookmarks.push(source);
+  }
+  const collect = (parts: string[], kind: "history" | "bookmarks") => {
+    const result: Record<string, string>[] = [];
+    const entryPattern = kind === "history"
+      ? /^\s{0,3}(?:#{2,5}\s*)?(?:记录|历史记录|浏览记录|浏览|history)\s*[#：:.-]?\s*(\d+)?(?:[.、：:]\s*[^\n]*)?\s*$/gim
+      : /^\s{0,3}(?:#{2,5}\s*)?(?:收藏|书签|bookmark)\s*[#：:.-]?\s*(\d+)?(?:[.、：:]\s*[^\n]*)?\s*$/gim;
+    for (const part of parts) {
+      const matches = [...part.matchAll(entryPattern)];
+      if (!matches.length) {
+        // Without a section heading, the opposite kind of entry must not leak
+        // into this list (e.g. ##记录1 is not a bookmark).
+        const opposite = kind === "history" ? /(?:#{2,5}\s*)?(?:收藏|书签|bookmark)\s*\d+/i
+          : /(?:#{2,5}\s*)?(?:记录|历史记录|浏览记录|history)\s*\d+/i;
+        if (opposite.test(part)) continue;
+        const fields = parseBrowserLooseFields(part);
+        if (fields["标题"] || fields["网页标题"] || fields["名称"]) result.push(fields);
+        continue;
+      }
+      for (let i = 0; i < matches.length; i++) {
+        const start = (matches[i].index ?? 0) + matches[i][0].length;
+        const end = matches[i + 1]?.index ?? part.length;
+        const fields = parseBrowserLooseFields(part.slice(start, end));
+        if (fields["标题"] || fields["网页标题"] || fields["名称"]) result.push(fields);
+      }
+    }
+    return result;
   };
-  return { parsed, sanitizedCandidate: source, parseMode: "sanitized" };
+  const history = collect(sections.history, "history").map((fields, index) => ({
+    id: `history${index + 1}`, title: fields["标题"] || fields["网页标题"] || fields["名称"] || "",
+    urlLabel: fields["网址"] || fields["URL"] || fields["网站"] || fields["链接"] || "",
+    createdAt: fields["时间"] || fields["访问时间"] || "",
+    content: fields["内容"] || fields["简介"] || fields["摘要"] || "",
+    context: fields["情境"] || fields["当时情境"] || "", innerThought: fields["内心"] || fields["想法"] || "",
+  }));
+  const bookmarks = collect(sections.bookmarks, "bookmarks").map((fields, index) => ({
+    id: `bookmark${index + 1}`, title: fields["标题"] || fields["网页标题"] || fields["名称"] || "",
+    urlLabel: fields["网址"] || fields["URL"] || fields["网站"] || fields["链接"] || "",
+    categoryLabel: fields["分类"] || fields["类别"] || "收藏",
+    content: fields["内容"] || fields["简介"] || "",
+    reason: fields["收藏原因"] || fields["原因"] || "",
+  }));
+  const parsed = { headerTitle: "浏览器", headerSubtitle: "历史记录与收藏夹", history, bookmarks };
+  return { parsed, sanitizedCandidate: source, parseMode: "sanitized",
+    ...(!history.length && !bookmarks.length ? { parseError: "未识别到有效的浏览记录或收藏条目" } : {}),
+  };
 }
 
 export async function generateCheckPhoneBrowser(
@@ -4414,6 +4447,7 @@ export async function generateCheckPhoneBrowser(
       snapshotSummary: previousPayload ? formatSnapshotSummary(previousPayload) : "",
       lastRefreshAt: previousUpdatedAt ?? "",
     });
+    messages.push({role:"user",content:"普通浏览器历史与收藏应体现角色自己的兴趣、职业、生活琐事、长期习惯和独立检索。近期聊天只是可选参考，不能整批复述当前Chat；没有证据的细节只作合理模拟，不当作已发生的真实经历。历史和收藏分别生成，收藏应有长期价值，不要求与本轮对话相关。请遵守原有输出字段格式。"});
     const rawOutput = await sendLLMRequest(
       apiConfig,
       preset,
@@ -4430,7 +4464,7 @@ export async function generateCheckPhoneBrowser(
       return {
         payload: null,
         summary: "",
-        error: "无法解析浏览器内容",
+        error: "无法解析普通浏览器记录：没有识别到带标题的历史记录或收藏条目",
         debugRawOutput: rawOutput,
         debugSanitizedOutput: sanitizedCandidate,
         debugParseMode: parseMode,
@@ -7913,6 +7947,10 @@ function parseCheckPhoneBatchAppOutput(
       parsed = parseMessagesBlockPayload(rawOutput).parsed;
       payload = normalizeMessagesPayload(parsed);
       if (payload) payload = mergeSmsIntoCheckPhone(characterId, payload as CheckPhoneMessagesPayload, true);
+      break;
+    case "browser":
+      parsed = parseBrowserBlockPayload(rawOutput).parsed;
+      payload = normalizeBrowserPayload(parsed);
       break;
     case "photos":
       parsed = parsePhotosBlockPayload(rawOutput).parsed;
