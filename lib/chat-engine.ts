@@ -1888,7 +1888,7 @@ export async function buildChatPromptMessages(
     const config = apiConfigs.find(c => c.id === activeSlot.apiConfigId);
     if (!config) throw new ChatEngineError(`API Configuration not found for ${character.name}.`);
 
-    const presets = loadPresets();
+    const presets = loadPresets(character.id);
     let preset = activeSlot.presetId ? presets.find(p => p.id === activeSlot.presetId) || null : null;
     if (!preset) preset = presets.find(p => p.builtIn) ?? null;
     const promptProfile = options?.promptProfile;
