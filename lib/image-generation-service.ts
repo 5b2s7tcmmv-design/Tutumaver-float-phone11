@@ -748,6 +748,7 @@ function selectedGeneratedReference(characterId: string) {
 }
 
 export async function generateImageFromConfiguredApi(params: {
+  userInitiated?: boolean;
   description: string;
   characterId?: string;
   /** 内容所属 APP；用于按“角色 > APP > 全局”解析生图方案。 */
@@ -756,6 +757,8 @@ export async function generateImageFromConfiguredApi(params: {
   settings?: ImageGenerationSettings;
   signal?: AbortSignal;
 }): Promise<ImageGenerationResult | null> {
+  if(params.userInitiated !== true) return null;
+
   const storedSettings = params.settings ?? loadImageGenerationSettings();
   // 显式传入 settings 的配置测试/工具调用保持原样；正常业务调用才读取绑定。
   const settings = params.settings
