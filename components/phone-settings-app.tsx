@@ -20,7 +20,7 @@ import { UserIdentitySettings } from "./settings/user-identity";
 import { AboutDeclaration } from "./settings/about-declaration";
 import { ContentPromptSettings } from "./settings/content-prompt-settings";
 import { AiBehaviorSettings } from "./settings/ai-behavior-settings";
-import {PictureSettings} from "./settings/picture-settings";
+
 import { BindingManager } from "./settings/binding-manager";
 import { CloudServicesPage } from "./settings/cloud-services-setup";
 import { ToolboxSettings } from "./settings/toolbox-settings";
@@ -48,7 +48,6 @@ type SettingsPageProps = {
 type SubPage =
     | "android"
     | "aiBehavior"
-    | "pictureSettings"
     | "contentPrompts"
     | "main"
     | "api"
@@ -69,8 +68,8 @@ type SubPage =
 
 const SETTINGS_MENU = [
     { id: "contentPrompts", icon: SlidersHorizontal, label: "内容提示词", desc: "各应用内容方向与生成语言", iconColor: BINDING_ACCENTS.api, glass: "" },
-    { id: "aiBehavior", icon: SlidersHorizontal, label: "AI 行为", desc: "配图偏好与日程生成提示词", iconColor: BINDING_ACCENTS.api, glass: "" },
-    { id: "pictureSettings", icon: Image, label: "图片设置", desc: "文字图遮罩和图片提示词语言", iconColor: CONTENT_APP_ACCENTS.moments, glass: "" },
+    { id: "aiBehavior", icon: SlidersHorizontal, label: "图片设置", desc: "配图倾向与相册来源权限", iconColor: BINDING_ACCENTS.api, glass: "" },
+
     { id: "api", icon: HardDrive, label: "API 设置", desc: "大模型接口", iconColor: BINDING_ACCENTS.api , glass: "api" },
     { id: "voice", icon: Mic, label: "语音 API", desc: "语音合成", iconColor: BINDING_ACCENTS.voice , glass: "voice" },
     { id: "imageGeneration", icon: Image, label: "图像生成 API", desc: "模型、参考图与提示词", iconColor: CONTENT_APP_ACCENTS.moments , glass: "image-generation" },
@@ -312,7 +311,7 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
             case "android": return <AndroidSettings onNotice={onNotice}/>;
             case "contentPrompts": return <ContentPromptSettings />;
             case "aiBehavior": return <AiBehaviorSettings />;
-            case "pictureSettings": return <PictureSettings/>;
+
             case "api":
                 return <ApiSettings />;
             case "voice":
@@ -418,7 +417,7 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                             <h3 className="settings-menu-section-title">Data & Rules</h3>
                             <div className="mt-[10px] flex flex-col gap-3">
                                 <CardGrid
-                                    items={SETTINGS_MENU.filter(item => ["presets", "worldbook", "regex", "data", "voiceFavorites", "aiBehavior", "pictureSettings"].includes(item.id)).map(makeCardItem)}
+                                    items={SETTINGS_MENU.filter(item => ["presets", "worldbook", "regex", "data", "voiceFavorites", "aiBehavior", "contentPrompts"].includes(item.id)).map(makeCardItem)}
                                 />
                                 <FeaturedCard item={bindingFeaturedItem} />
                             </div>
