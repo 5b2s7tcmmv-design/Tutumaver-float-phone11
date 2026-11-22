@@ -31,12 +31,13 @@ export function formatXiaohongshuShareForPrompt(input: {
     title?: string;
     body?: string;
     description?: string;
+    comments?: import("./xiaohongshu-types").XiaohongshuComment[];
 }): string {
     const author = compactShareText(input.author, "未知作者");
     const title = compactShareText(input.title, "无标题");
     const body = compactShareText(input.body, "无正文内容");
     const description = compactShareText(input.description, "");
-    return `分享了一条小红书帖子，作者：${author}, 标题：${title}, 正文内容：${body}，图片/视频描述：${description || "无"}`;
+    return `分享了一条小红书帖子，作者：${author}, 标题：${title}, 正文内容：${body}，图片/视频描述：${description || "无"}${input.comments?.length ? "，分享时评论：" + JSON.stringify(input.comments.slice(0,5).map(c=>({author:c.authorName,text:c.text,replyTo:c.replyTo}))) : ""}`;
 }
 
 export function xiaohongshuShareMessage(sessionId: string, share: XiaohongshuNoteChatSharePayload) {
