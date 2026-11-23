@@ -2628,61 +2628,6 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         setMessages(prev => [...prev, sysMsg]);
     };
 
-    const handleGroupPaymentRequestAction = (action: "accept" | "decline", claimerName: string, ownerName?: string) => {
-        const freshMessages = loadChatMessages(session.id);
-        const targetMsg = [...freshMessages].reverse().find(m => {
-            if (m.mediaType !== "payment_request" || m.mediaData?.status !== "pending") return false;
-            if (!ownerName) return true;
-            const sender = m.mediaData?.paymentRequesterName || m.mediaData?.senderName || getMsgSender(m);
-            return sender === ownerName;
-        });
-        if (!targetMsg) return;
-        const owner = ownerName || targetMsg.mediaData?.paymentRequesterName || targetMsg.mediaData?.senderName || getMsgSender(targetMsg);
-        const ownerDisplay = owner === (userIdentity?.name) ? "你" : owner;
-        const isAccept = action === "accept";
-        const updatedData = {
-            ...targetMsg.mediaData,
-            status: isAccept ? "paid" as const : "declined" as const,
-            paymentResolvedAt: new Date().toISOString(),
-            paymentPayerName: claimerName,
-        };
-        if (targetMsg.role === "user") {
-            const payer = groupCharacters.find(item => item.name === claimerName);
-            const settled = settleShoppingPaymentRequest({
-                orderId: targetMsg.mediaData?.shoppingOrderId,
-                requestId: targetMsg.mediaData?.paymentRequestId,
-                accepted: isAccept,
-                payerCharacterId: payer?.id,
-                payerCharacterName: claimerName,
-            });
-            if (isAccept && (!settled || settled.paymentStatus !== "paid_by_character")) {
-                showChatToast(`${claimerName}的钱包余额不足，代付未完成`);
-                return;
-            }
-        }
-        updateMessageMediaData(targetMsg.id, updatedData);
-        setMessages(prev => prev.map(m => m.id === targetMsg.id ? { ...m, mediaData: updatedData } : m));
-        const sysText = isAccept
-            ? `${claimerName}接受了${ownerDisplay}的代付请求`
-            : `${claimerName}拒绝了${ownerDisplay}的代付请求`;
-        const sysMsg = pushChatMessage({
-            sessionId: session.id,
-            role: "assistant",
-            content: sysText,
-            mediaType: isAccept ? "accept_payment_request" : "decline_payment_request",
-            mediaData: { claimer: claimerName, owner: ownerDisplay },
-            senderName: claimerName,
-            ...buildAssistantActionEditMeta(
-                isAccept
-                    ? `[${claimerName}接受了${ownerDisplay}的代付]`
-                    : `[${claimerName}拒绝了${ownerDisplay}的代付]`
-            ),
-        });
-        setMessages(prev => [...prev, sysMsg]);
-    };
-
-    // Group admin action from AI output: validate permission + apply.
-    // Returns display fields, or null when the tag must be silently dropped.
     const applyAIGroupAdminAction = (actorCharacterId: string, data: ChatMessage["mediaData"]) => {
         if (!session.isGroup || !data?.adminAction) return null;
         const action = data.adminAction as GroupAdminAction;
@@ -2759,7 +2704,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             for (const part of parts) {
                 throwIfGenerationStopped(guard);
                 if (part.mediaType === "meeting_invite") continue;
-                if (part.mediaType === "gift") continue; // 礼物及外卖只投递到单聊
+                if (part.mediaType === "gift" || part.mediaType === "payment_request" || part.mediaType === "accept_payment_request" || part.mediaType === "decline_payment_request") continue; // 礼物、外卖及代付仅单聊
                 // Filter action types
                 if (part.mediaType === "voice_call" || part.mediaType === "video_call") {
                     if (session.isSpectator) continue; // 围观群不能把用户卷进群通话
@@ -2795,20 +2740,6 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                     const claimer = part.mediaData?.claimer || r.characterName;
                     const owner = part.mediaData?.owner;
                     handleGroupTransferAction("decline", claimer, owner);
-                    continue;
-                }
-                if (part.mediaType === "accept_payment_request") {
-                    throwIfGenerationStopped(guard);
-                    const claimer = part.mediaData?.claimer || r.characterName;
-                    const owner = part.mediaData?.owner;
-                    handleGroupPaymentRequestAction("accept", claimer, owner);
-                    continue;
-                }
-                if (part.mediaType === "decline_payment_request") {
-                    throwIfGenerationStopped(guard);
-                    const claimer = part.mediaData?.claimer || r.characterName;
-                    const owner = part.mediaData?.owner;
-                    handleGroupPaymentRequestAction("decline", claimer, owner);
                     continue;
                 }
                 if (part.mediaType === "group_admin_notice") {
