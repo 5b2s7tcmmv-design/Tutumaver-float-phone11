@@ -1,3 +1,4 @@
+import { createBuiltinPreset } from "./builtin-preset";
 import {projectReconciliations} from './phone-reconcile';
 import {projectPlayChats} from "./checkphone-play";
 import { sharedCommunicationsPrompt, sharedCommunicationRows, isUserCommunicationName } from "./checkphone-communications";
@@ -4344,7 +4345,22 @@ export async function generateCheckPhoneYoutube(
   if (!apiConfig) return { payload: null, summary: "", error: "未找到可用的 API 配置", debugRawOutput: "", debugParseMode: "failed" };
 
   try {
-    const messages = await buildCheckPhoneAppMessages(characterId, "youtube", preset, worldBooks, regexes, {
+    // Older saved built-in presets do not automatically receive new entries; add only
+    // the YouTube output contract in-memory, without rewriting the user's preset.
+    const youtubeEntryPresent = preset?.prompts?.some(item => item.identifier === "checkphone_youtube") === true;
+    let youtubePreset = preset;
+    if (preset && !youtubeEntryPresent && preset.builtIn) {
+      const youtubeEntry = createBuiltinPreset().prompts.find(item => item.identifier === "checkphone_youtube");
+      if (youtubeEntry) youtubePreset = {
+        ...preset,
+        prompts: [...preset.prompts, youtubeEntry],
+        prompt_order: [...(preset.prompt_order || []), {identifier:"checkphone_youtube",enabled:true}],
+      };
+    }
+    if (preset && !youtubeEntryPresent && !preset.builtIn) {
+      return {payload:null,summary:"",error:"当前自定义预设缺少「查手机·YouTube」输出格式条目，请补齐后重试。",debugParseMode:"failed"};
+    }
+    const messages = await buildCheckPhoneAppMessages(characterId, "youtube", youtubePreset, worldBooks, regexes, {
       snapshotSummary: previousPayload ? formatSnapshotSummary(previousPayload) : "",
       lastRefreshAt: previousUpdatedAt ?? "",
     });
