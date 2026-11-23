@@ -3,6 +3,7 @@ import { loadBindingConfig, loadImageGenerationSettings, resolveBinding, resolve
 import { applyImageGenerationBinding } from "./image-generation-binding";
 import JSZip from "jszip";
 import { getChatImageFromIndexedDB } from "./chat-asset-storage";
+import { loadCharacters } from "./character-storage";
 import { storeMediaBlob } from "./media-cache-storage";
 import { generatedPhotoOwner, loadPhotoLibrary } from "./photo-library-storage";
 import { throwIfAborted } from "./abort-utils";
@@ -841,26 +842,43 @@ export async function generateImageFromConfiguredApi(params: {
     ? await getChatImageFromIndexedDB(reference.assetId)
     : null);
   throwIfAborted(params.signal);
+  // Keep each reference's identity attached to its exact multipart position.
+  // Character portrait must precede the currently bound user's portrait.
   const referenceImageDataUrls: string[] = [];
+  const referenceRoles: Array<"character" | "user"> = [];
   if (rawReferenceImageDataUrl) {
     referenceImageDataUrls.push(await normalizeReferenceImageForEdit(rawReferenceImageDataUrl,
       selectedImageDataUrl ? undefined : reference?.faceCrop));
+    referenceRoles.push("character");
   }
   const currentUser = params.includeUserReference ? resolveUserIdentity(params.characterId, params.appId) : null;
   const userReference = currentUser ? settings.userReferences?.[currentUser.id] : undefined;
   if (params.includeUserReference && userReference?.assetId && userReference.enabled !== false) {
     const userImage = await getChatImageFromIndexedDB(userReference.assetId).catch(() => null);
-    if (userImage) referenceImageDataUrls.push(await normalizeReferenceImageForEdit(userImage, userReference.faceCrop));
+    if (userImage) {
+      referenceImageDataUrls.push(await normalizeReferenceImageForEdit(userImage, userReference.faceCrop));
+      referenceRoles.push("user");
+    }
   }
   throwIfAborted(params.signal);
   const characterPrompt = reference?.featurePrompt?.trim() || "";
   const userPrompt = params.includeUserReference ? userReference?.featurePrompt?.trim() || "" : "";
+  const characterName = params.characterId
+    ? loadCharacters().find(person => person.id === params.characterId)?.name || "当前聊天角色"
+    : "当前聊天角色";
+  const userName = currentUser?.name || "当前绑定用户";
+  const imageIdentityInstructions = referenceRoles.map((role, index) =>
+    role === "character"
+      ? `第${index + 1}张参考图 = 角色「${characterName}」本人的脸部与外貌。只能用于角色，绝不能作为用户的脸。`
+      : `第${index + 1}张参考图 = 用户身份「${userName}」本人的脸部与外貌。只能用于用户，绝不能作为角色的脸。`
+  );
   const prompt = mergePrompt([
     description,
     characterPrompt ? `【角色固定外观】${characterPrompt}` : "",
     userPrompt ? `【当前用户${currentUser?.name ? `「${currentUser.name}」` : ""}固定外观】${userPrompt}` : "",
-    referenceImageDataUrls.length === 2
-      ? "参考图1为角色、参考图2为当前用户；画面需要两人同框时分别保持外貌，不要把两人的脸混在一起。"
+    ...imageIdentityInstructions,
+    params.includeUserReference && params.characterId
+      ? `【双人身份规则】角色「${characterName}」和用户「${userName}」是两位不同的人。需要合照时必须同时出现、各自保留自己的面部特征；不要交换脸、混合五官、把两人合并成一个人，也不要让两人都长成同一张参考图的样子。`
       : "",
   ].filter(Boolean).join("\n\n"), openaiSettings.extraPrompt);
 
