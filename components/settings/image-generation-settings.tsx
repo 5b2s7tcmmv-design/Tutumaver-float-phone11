@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, Fragment, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { AlertCircle, Camera, ChevronDown, Image, Info, Plus, Power, RefreshCw, ScanFace, Sparkles, Trash2, Upload } from "lucide-react";
 import type { ImageGenerationSettings as ImageGenerationSettingsType, NovelAiPreset, OpenAiImagePreset } from "@/lib/settings-types";
 import {
@@ -8,9 +8,12 @@ import {
     DEFAULT_NOVELAI_PRESET,
     loadImageGenerationSettings,
     saveImageGenerationSettings,
+    loadUserIdentities,
+    USER_IDENTITIES_UPDATED_EVENT,
 } from "@/lib/settings-storage";
 import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
+import type { UserIdentity } from "./user-identity";
 import { getChatImageFromIndexedDB, saveChatImageToIndexedDB } from "@/lib/chat-asset-storage";
 import {
     fetchImageGenerationModels,
@@ -66,6 +69,7 @@ type Status = { success: boolean; message: string };
 export function ImageGenerationSettings() {
     const [settings, setSettings] = useState<ImageGenerationSettingsType>(DEFAULT_IMAGE_GENERATION_SETTINGS);
     const [characters, setCharacters] = useState<Character[]>([]);
+    const [userIdentities, setUserIdentities] = useState<UserIdentity[]>([]);
     const [referencePreviews, setReferencePreviews] = useState<Record<string, string>>({});
     const [referenceUploadingId, setReferenceUploadingId] = useState<string | null>(null);
     const [referenceUploadNotice, setReferenceUploadNotice] = useState<Status | null>(null);
@@ -144,14 +148,25 @@ export function ImageGenerationSettings() {
         }
         const loadedCharacters = loadCharacters();
         setCharacters(loadedCharacters);
-        setSelectedCharacterId(loadedCharacters[0]?.id || null);
+        const identities = loadUserIdentities();
+        setUserIdentities(identities);
+        setSelectedCharacterId(identities[0] ? `user:${identities[0].id}` : loadedCharacters[0]?.id || null);
+    }, []);
+
+    useEffect(() => {
+        const refresh = () => setUserIdentities(loadUserIdentities());
+        window.addEventListener(USER_IDENTITIES_UPDATED_EVENT, refresh);
+        return () => window.removeEventListener(USER_IDENTITIES_UPDATED_EVENT, refresh);
     }, []);
 
     useEffect(() => {
         let cancelled = false;
-        const refs = settings.characterReferences || {};
-        Promise.all(Object.entries(refs).map(async ([characterId, ref]) => {
-            const dataUrl = ref.assetId ? await getChatImageFromIndexedDB(ref.assetId) : null;
+        const refs = [
+            ...Object.entries(settings.characterReferences || {}),
+            ...Object.entries(settings.userReferences || {}).map(([id, ref]) => [`user:${id}`, ref] as const),
+        ];
+        Promise.all(refs.map(async ([characterId, ref]) => {
+            const dataUrl = ref.assetId ? await getChatImageFromIndexedDB(ref.assetId).catch(() => null) : null;
             return [characterId, dataUrl] as const;
         })).then(entries => {
             if (cancelled) return;
@@ -162,7 +177,7 @@ export function ImageGenerationSettings() {
             setReferencePreviews(next);
         });
         return () => { cancelled = true; };
-    }, [settings.characterReferences]);
+    }, [settings.characterReferences, settings.userReferences]);
 
     useEffect(() => {
         return () => {
@@ -361,37 +376,54 @@ export function ImageGenerationSettings() {
         }
     };
 
-    const uploadReference = async (characterId: string, file: File) => {
+    const referenceFor = (targetId: string) => targetId.startsWith("user:")
+        ? settings.userReferences?.[targetId.slice(5)]
+        : settings.characterReferences?.[targetId];
+
+    const updateCharacterReference = (
+        targetId: string,
+        patch: Partial<ImageGenerationSettingsType["characterReferences"][string]>,
+    ) => {
+        const isUser = targetId.startsWith("user:");
+        const id = isUser ? targetId.slice(5) : targetId;
+        if (isUser) {
+            const current = settings.userReferences?.[id];
+            persist({
+                ...settings,
+                userReferences: {
+                    ...(settings.userReferences || {}),
+                    [id]: { ...current, ...patch, updatedAt: Date.now() },
+                },
+            });
+        } else {
+            const current = settings.characterReferences?.[id];
+            persist({
+                ...settings,
+                characterReferences: {
+                    ...(settings.characterReferences || {}),
+                    [id]: { ...current, ...patch, updatedAt: Date.now() },
+                },
+            });
+        }
+    };
+
+    const uploadReference = async (targetId: string, file: File) => {
         if (referenceUploadingId) return;
-        setReferenceUploadingId(characterId);
+        setReferenceUploadingId(targetId);
         setReferenceUploadNotice(null);
         try {
             if (!file.size) throw new Error("图片文件为空，请重新选择。");
             if (!file.type.startsWith("image/")) throw new Error("请选择支持的图片文件。");
             const assetId = await saveChatImageToIndexedDB(file);
-            // IndexedDB can be unavailable without throwing during write: always verify before binding.
             const savedImage = await getChatImageFromIndexedDB(assetId);
             if (!savedImage?.startsWith("data:image/")) {
                 throw new Error("参考图未能写入本地图片库，请检查存储空间或更换图片。");
             }
-            const current = settings.characterReferences?.[characterId];
-            const faceCrop = current?.faceCrop || { x: 0.27, y: 0.12, size: 0.46 };
-            persist({
-                ...settings,
-                characterReferences: {
-                    ...(settings.characterReferences || {}),
-                    [characterId]: {
-                        ...current,
-                        assetId,
-                        updatedAt: Date.now(),
-                        enabled: true,
-                        faceCrop,
-                    },
-                },
-            });
-            setReferencePreviews(previous => ({ ...previous, [characterId]: savedImage }));
+            const faceCrop = referenceFor(targetId)?.faceCrop || { x: 0.27, y: 0.12, size: 0.46 };
+            updateCharacterReference(targetId, { assetId, enabled: true, faceCrop });
+            setReferencePreviews(previous => ({ ...previous, [targetId]: savedImage }));
             setCropDraft(faceCrop);
-            setCropCharacterId(characterId);
+            setCropCharacterId(targetId);
             setReferenceUploadNotice({ success: true, message: "参考图已保存，请确认脸部选区。" });
         } catch (error) {
             const detail = error instanceof Error ? error.message : String(error);
@@ -404,26 +436,8 @@ export function ImageGenerationSettings() {
         }
     };
 
-    const updateCharacterReference = (
-        characterId: string,
-        patch: Partial<ImageGenerationSettingsType["characterReferences"][string]>,
-    ) => {
-        const current = settings.characterReferences?.[characterId];
-        persist({
-            ...settings,
-            characterReferences: {
-                ...(settings.characterReferences || {}),
-                [characterId]: {
-                    ...current,
-                    ...patch,
-                    updatedAt: Date.now(),
-                },
-            },
-        });
-    };
-
     const openFaceCrop = (characterId: string) => {
-        const crop = settings.characterReferences?.[characterId]?.faceCrop || { x: 0.27, y: 0.12, size: 0.46 };
+        const crop = referenceFor(characterId)?.faceCrop || { x: 0.27, y: 0.12, size: 0.46 };
         setCropDraft(crop);
         setCropViewport({ width: 0, height: 0 });
         setCropCharacterId(characterId);
@@ -492,8 +506,12 @@ export function ImageGenerationSettings() {
         if (characterScrollDragRef.current?.pointerId === event.pointerId) characterScrollDragRef.current = null;
     };
 
-    const selectedCharacter = characters.find(character => character.id === selectedCharacterId) || null;
-    const selectedReference = selectedCharacter ? settings.characterReferences?.[selectedCharacter.id] : undefined;
+    const referenceSubjects = [
+        ...userIdentities.map(identity => ({ id: `user:${identity.id}`, name: identity.name, avatar: identity.avatarUrl || "", isUser: true })),
+        ...characters.map(character => ({ id: character.id, name: character.name, avatar: character.avatar, isUser: false })),
+    ];
+    const selectedCharacter = referenceSubjects.find(character => character.id === selectedCharacterId) || null;
+    const selectedReference = selectedCharacter ? referenceFor(selectedCharacter.id) : undefined;
     const characterListOverflows = characterScrollMetrics.scrollHeight > characterScrollMetrics.clientHeight + 1;
     const characterScrollThumbPercent = characterListOverflows
         ? Math.max(14, characterScrollMetrics.clientHeight / characterScrollMetrics.scrollHeight * 100)
@@ -1050,20 +1068,23 @@ export function ImageGenerationSettings() {
                         className="menu-group max-h-[292px] overflow-y-auto overscroll-contain pr-3"
                         onScroll={syncCharacterScrollMetrics}
                     >
-                        {characters.length === 0 ? (
+                        {referenceSubjects.length === 0 ? (
                             <div className="ui-empty py-8">
                                 <Camera size={22} />
                                 <span className="menu-desc">暂无角色。</span>
                             </div>
-                        ) : characters.map(character => {
+                        ) : referenceSubjects.map((character, index) => {
                             const preview = referencePreviews[character.id];
-                            const ref = settings.characterReferences?.[character.id];
+                            const ref = referenceFor(character.id);
                             return (
+                                <Fragment key={character.id}>
+                                    {(index === 0 || index === userIdentities.length) && (
+                                        <div className="menu-desc px-3 py-2 font-medium">{character.isUser ? "用户身份" : "角色"}</div>
+                                    )}
                                 <button
-                                    key={character.id}
                                     type="button"
                                     className={`menu-item w-full text-left ${selectedCharacterId === character.id ? "bg-[var(--c-input)]" : ""}`}
-                                    onClick={() => setSelectedCharacterId(character.id)}
+                                    onClick={() => { setSelectedCharacterId(character.id); setReferenceUploadNotice(null); }}
                                 >
                                     <span className="h-11 w-11 shrink-0 overflow-hidden rounded-xl bg-[var(--c-input)]">
                                         {preview ? (
@@ -1085,6 +1106,7 @@ export function ImageGenerationSettings() {
                                     </span>
                                     <ChevronDown size={16} className={selectedCharacterId === character.id ? "-rotate-90 opacity-70" : "opacity-40"} />
                                 </button>
+                                </Fragment>
                             );
                         })}
                     </div>
@@ -1112,7 +1134,7 @@ export function ImageGenerationSettings() {
                         <div className="flex items-center justify-between gap-3">
                             <div className="min-w-0">
                                 <div className="menu-label truncate">{selectedCharacter.name} · 专属生图设定</div>
-                                <div className="menu-desc">只影响这个角色，不会改动角色卡正文。</div>
+                                <div className="menu-desc">{selectedCharacter.isUser ? "按用户身份保存外貌设定，切换配置绑定不会覆盖。" : "只影响这个角色，不会改动角色卡正文。"}</div>
                             </div>
                             {referencePreviews[selectedCharacter.id] && (
                                 <button
