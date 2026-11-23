@@ -1,3 +1,5 @@
+import { fetchExternalApi, isAndroidNativeApi } from "./android-native-api";
+
 export const PHOTO_URL_IMPORT_LIMIT = 100;
 
 export function parsePhotoUrls(text: string): string[] {
@@ -15,7 +17,15 @@ export function parsePhotoUrls(text: string): string[] {
 }
 
 export async function downloadPhotoUrl(url: string, signal: AbortSignal): Promise<File> {
-  const response = await fetch("/api/photos/import-url", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }), signal });
+  // APK has no Next.js server: use the user's URL via Capacitor's native HTTPS
+  // transport. Keep the existing server-side fetch and validation for web users.
+  const native = isAndroidNativeApi();
+  if (native && new URL(url).protocol !== "https:") {
+    throw new Error("安卓版链接导入需要 HTTPS 图片直链。");
+  }
+  const response = native
+    ? await fetchExternalApi(url, { method: "GET", signal })
+    : await fetch("/api/photos/import-url", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }), signal });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     throw new Error(data.error || `下载失败（HTTP ${response.status}）`);
