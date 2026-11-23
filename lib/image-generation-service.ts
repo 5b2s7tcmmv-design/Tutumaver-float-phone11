@@ -1,5 +1,5 @@
 import type { ImageGenerationSettings, NovelAiPreset } from "./settings-types";
-import { loadBindingConfig, loadImageGenerationSettings, resolveBinding, DEFAULT_NOVELAI_PRESET } from "./settings-storage";
+import { loadBindingConfig, loadImageGenerationSettings, resolveBinding, resolveUserIdentity, DEFAULT_NOVELAI_PRESET } from "./settings-storage";
 import { applyImageGenerationBinding } from "./image-generation-binding";
 import JSZip from "jszip";
 import { getChatImageFromIndexedDB } from "./chat-asset-storage";
@@ -758,6 +758,7 @@ export async function generateImageFromConfiguredApi(params: {
   /** 内容所属 APP；用于按“角色 > APP > 全局”解析生图方案。 */
   appId?: string;
   useReferenceImage?: boolean;
+  includeUserReference?: boolean;
   settings?: ImageGenerationSettings;
   signal?: AbortSignal;
 }): Promise<ImageGenerationResult | null> {
@@ -791,7 +792,10 @@ export async function generateImageFromConfiguredApi(params: {
     const characterFeaturePrompt = params.characterId
       ? settings.characterReferences?.[params.characterId]?.featurePrompt?.trim()
       : "";
-    if (characterFeaturePrompt) positiveParts.push(characterFeaturePrompt);
+    const activeUser = params.includeUserReference ? resolveUserIdentity(params.characterId, params.appId) : null;
+    const userFeaturePrompt = activeUser ? settings.userReferences?.[activeUser.id]?.featurePrompt?.trim() : "";
+    if (characterFeaturePrompt) positiveParts.push(`角色外貌：${characterFeaturePrompt}`);
+    if (userFeaturePrompt) positiveParts.push(`当前用户${activeUser?.name ? `「${activeUser.name}」` : ""}外貌：${userFeaturePrompt}`);
     if (description) positiveParts.push(description);
     const fullPrompt = positiveParts.join(", ");
 
@@ -837,19 +841,32 @@ export async function generateImageFromConfiguredApi(params: {
     ? await getChatImageFromIndexedDB(reference.assetId)
     : null);
   throwIfAborted(params.signal);
-  const referenceImageDataUrl = rawReferenceImageDataUrl
-    ? await normalizeReferenceImageForEdit(rawReferenceImageDataUrl, selectedImageDataUrl ? undefined : reference?.faceCrop)
-    : null;
+  const referenceImageDataUrls: string[] = [];
+  if (rawReferenceImageDataUrl) {
+    referenceImageDataUrls.push(await normalizeReferenceImageForEdit(rawReferenceImageDataUrl,
+      selectedImageDataUrl ? undefined : reference?.faceCrop));
+  }
+  const currentUser = params.includeUserReference ? resolveUserIdentity(params.characterId, params.appId) : null;
+  const userReference = currentUser ? settings.userReferences?.[currentUser.id] : undefined;
+  if (params.includeUserReference && userReference?.assetId && userReference.enabled !== false) {
+    const userImage = await getChatImageFromIndexedDB(userReference.assetId).catch(() => null);
+    if (userImage) referenceImageDataUrls.push(await normalizeReferenceImageForEdit(userImage, userReference.faceCrop));
+  }
   throwIfAborted(params.signal);
   const characterPrompt = reference?.featurePrompt?.trim() || "";
-  const prompt = mergePrompt(
-    characterPrompt ? `${description}\n\n【角色固定外观】${characterPrompt}` : description,
-    openaiSettings.extraPrompt,
-  );
+  const userPrompt = params.includeUserReference ? userReference?.featurePrompt?.trim() || "" : "";
+  const prompt = mergePrompt([
+    description,
+    characterPrompt ? `【角色固定外观】${characterPrompt}` : "",
+    userPrompt ? `【当前用户${currentUser?.name ? `「${currentUser.name}」` : ""}固定外观】${userPrompt}` : "",
+    referenceImageDataUrls.length === 2
+      ? "参考图1为角色、参考图2为当前用户；画面需要两人同框时分别保持外貌，不要把两人的脸混在一起。"
+      : "",
+  ].filter(Boolean).join("\n\n"), openaiSettings.extraPrompt);
 
   const data = openaiSettings.requestMode === "direct"
-    ? await generateImageDirect({ settings: openaiSettings, prompt, referenceImageDataUrl, signal: params.signal })
-    : await generateImageViaServerOrProxy({ settings: openaiSettings, prompt, referenceImageDataUrl, signal: params.signal });
+    ? await generateImageDirect({ settings: openaiSettings, prompt, referenceImageDataUrls, signal: params.signal })
+    : await generateImageViaServerOrProxy({ settings: openaiSettings, prompt, referenceImageDataUrls, signal: params.signal });
 
   throwIfAborted(params.signal);
   const mimeType = data.mimeType || "image/png";
@@ -863,7 +880,7 @@ export async function generateImageFromConfiguredApi(params: {
     blob,
     mimeType,
     prompt,
-    usedReferenceImage: Boolean(referenceImageDataUrl),
+    usedReferenceImage: referenceImageDataUrls.length > 0,
     revisedPrompt: data.revisedPrompt,
   };
 }
