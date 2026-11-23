@@ -1150,6 +1150,7 @@ export type CheckPhonePromptSecondaryTag =
   | "music"
   | "x"
   | "reddit"
+  | "youtube"
   | "bilibili"
   | "instagram"
   | "telegram"
