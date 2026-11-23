@@ -9,6 +9,7 @@ import {
     loadImageGenerationSettings,
     saveImageGenerationSettings,
     loadUserIdentities,
+    resolveUserIdentity,
     USER_IDENTITIES_UPDATED_EVENT,
 } from "@/lib/settings-storage";
 import { loadCharacters } from "@/lib/character-storage";
@@ -150,7 +151,8 @@ export function ImageGenerationSettings() {
         setCharacters(loadedCharacters);
         const identities = loadUserIdentities();
         setUserIdentities(identities);
-        setSelectedCharacterId(identities[0] ? `user:${identities[0].id}` : loadedCharacters[0]?.id || null);
+        const activeUserId = resolveUserIdentity(undefined, "chat")?.id || identities[0]?.id;
+        setSelectedCharacterId(activeUserId ? `user:${activeUserId}` : loadedCharacters[0]?.id || null);
     }, []);
 
     useEffect(() => {
