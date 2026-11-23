@@ -31,7 +31,11 @@ export async function downloadPhotoUrl(url: string, signal: AbortSignal): Promis
     throw new Error(data.error || `下载失败（HTTP ${response.status}）`);
   }
   const blob = await response.blob();
-  if (!blob.type.startsWith("image/") || !blob.size) throw new Error("链接没有返回可用图片。");
+  // Match the web proxy's supported formats and 10 MB per-image limit.
+  if (!["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"].includes(blob.type.split(";")[0].toLowerCase()) || !blob.size) {
+    throw new Error("链接没有返回支持的图片，请使用 JPG、PNG、WebP、GIF 或 AVIF 图片直链。");
+  }
+  if (blob.size > 10 * 1024 * 1024) throw new Error("单张图片不能超过 10 MB。");
   // 解码后再进入照片队列，避免把伪装成图片的网页或损坏文件存入相册。
   const objectUrl = URL.createObjectURL(blob);
   try {
