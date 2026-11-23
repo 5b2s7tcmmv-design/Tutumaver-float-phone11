@@ -13,7 +13,13 @@ export function loadSchedulePrompts(): Record<SchedulePromptKind, string> {
  weverse: typeof raw.weverse === "string" && raw.weverse.trim() ? raw.weverse : DEFAULT_SCHEDULE_PROMPTS.weverse };
 }
 export function saveSchedulePrompt(kind: SchedulePromptKind, text: string) {
- const next = { ...loadSchedulePrompts(), [kind]: text.trim() || DEFAULT_SCHEDULE_PROMPTS[kind] };
+ // Opening the calendar editor already displays any legacy customized Weverse text,
+ // appended once by loadSchedulePrompts(). Saving it makes that combined text the
+ // calendar source of truth so future edits can remove it without re-injection.
+ const previous = loadSchedulePrompts();
+ const next = kind === "calendar"
+  ? { calendar: text.trim() || DEFAULT_SCHEDULE_PROMPTS.calendar, weverse: DEFAULT_SCHEDULE_PROMPTS.weverse }
+  : { calendar: previous.calendar, weverse: text.trim() || DEFAULT_SCHEDULE_PROMPTS.weverse };
  kvSet(SCHEDULE_PROMPT_KEY, JSON.stringify(next));
  return next;
 }
