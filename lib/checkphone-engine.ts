@@ -4366,7 +4366,7 @@ export async function generateCheckPhoneYoutube(
     });
     const rawOutput = await sendLLMRequest(
       apiConfig,
-      preset,
+      youtubePreset,
       messages,
       regexes,
       { characterName: loadCharacters().find((item) => item.id === characterId)?.name },
