@@ -4,6 +4,7 @@
 
 import type { ApiConfig } from "./settings-types";
 import { pushApiLog } from "./api-log-store";
+import { fetchExternalApi } from "./android-native-api";
 
 const SIMPLE_ANTHROPIC_AUTO_MAX_TOKENS = 8192;
 
@@ -98,7 +99,7 @@ export function isNativeGoogleApi(config: ApiConfig): boolean {
 export async function simpleLLMCall(
     config: ApiConfig,
     messages: { role: string; content: string }[],
-    options?: { temperature?: number; max_tokens?: number; signal?: AbortSignal; label?: string },
+    options?: { temperature?: number; max_tokens?: number; signal?: AbortSignal; label?: string; nativeTransport?: boolean },
 ): Promise<{ content: string | null; error?: string; finishReason?: string; wasTruncated?: boolean }> {
     const baseUrl = determineBaseUrl(config);
     if (!baseUrl || !config.apiKey) {
@@ -160,7 +161,8 @@ export async function simpleLLMCall(
         const bodyTokenEstimate = Math.ceil(bodySize / 3);
         console.log("[simpleLLMCall] Request:", { url: fetchUrl.slice(0, 80), bodySize, bodyTokenEstimate, model: config.defaultModel });
 
-        const res = await fetch(fetchUrl, { method: "POST", headers, body, signal: options?.signal });
+        const transport = options?.nativeTransport ? fetchExternalApi : fetch;
+        const res = await transport(fetchUrl, { method: "POST", headers, body, signal: options?.signal });
 
         if (!res.ok) {
             const errText = await res.text().catch(() => "");
@@ -205,7 +207,12 @@ export async function simpleLLMCall(
             messages: messages.map(m => ({ role: m.role, content: m.content })),
             rawResponse: `[请求失败] ${err instanceof Error ? err.message : String(err)}`,
         });
-        return { content: null, error: `请求失败: ${err instanceof Error ? err.message : String(err)}` };
+        const message = err instanceof Error ? err.message : String(err);
+        if (options?.signal?.aborted) return { content: null, error: "请求已取消" };
+        if (/failed to fetch|network request failed|load failed|networkerror/i.test(message)) {
+            return { content: null, error: "网络连接失败（Failed to fetch）：请检查记忆总结 API 的地址、网络连接及网页版跨域限制；这不是模型能力不足的直接证据。" };
+        }
+        return { content: null, error: `请求失败: ${message}` };
     }
 }
 
