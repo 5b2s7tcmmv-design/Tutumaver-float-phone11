@@ -108,6 +108,7 @@ import { splitBilingualText } from "@/lib/bilingual-text";
 import { getSavedMomentsScreenName } from "@/lib/moments-profile";
 import { parseActionTags } from "@/lib/action-parser";
 import { kvGet, kvSet, kvRemove } from "@/lib/kv-db";
+import { claimGroupPacket, moneyUnits } from "@/lib/group-red-packet";
 import { creditWalletBalance, payWithWalletBalance, loadWalletState, recordWalletPayment, recordWalletCredit, formatCurrencyAmount, walletCurrency, findUserWalletIdentityByTransaction, getActiveUserWalletIdentityId } from "@/lib/wallet-storage";
 import { loadDeliveredShoppingGifts, type ShoppingGiftCandidate } from "@/lib/shopping-gift-utils";
 import { syncShoppingDeliveries } from "@/lib/shopping-delivery";
@@ -2504,81 +2505,24 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
     const getMsgSender = (m: ChatMessage) =>
         m.role === "user" ? (userIdentity?.name || "你") : (m.senderName || "未知");
 
-    // 红包：按 ownerName 匹配发送人，领取/退回
-    // 拼手气红包：随机分配金额（二倍均值法）
-    const calcRedPacketShare = (totalAmount: number, claimedAmounts: Record<string, number>, totalRecipients: number): number => {
-        const claimedTotal = Object.values(claimedAmounts).reduce((s, v) => s + v, 0);
-        const remaining = totalAmount - claimedTotal;
-        const claimedCount = Object.keys(claimedAmounts).length;
-        const leftCount = totalRecipients - claimedCount;
-        if (leftCount <= 1) return Math.round(remaining * 100) / 100; // 最后一个人拿剩余
-        const avg = remaining / leftCount;
-        const max = avg * 2;
-        const share = Math.max(0.01, Math.random() * max);
-        return Math.round(Math.min(share, remaining - 0.01 * (leftCount - 1)) * 100) / 100;
-    };
-
-    const handleGroupRedPacketAction = (action: "accept" | "decline", claimerName: string, ownerName?: string) => {
-        // 从 localStorage 读最新数据，避免 processGroupParts 循环中多人领取时闭包过期
-        const freshMessages = loadChatMessages(session.id);
-        const targetMsg = [...freshMessages].reverse().find(m => {
-            if (m.mediaType !== "red_packet") return false;
-            if (m.mediaData?.status !== "pending" && m.mediaData?.status !== "opened") return false;
-            // 已被领完的跳过
-            if (m.mediaData?.status === "opened") {
-                const cnt = m.mediaData?.count || 1;
-                if ((m.mediaData?.claimedBy?.length || 0) >= cnt) return false;
-            }
-            if (!ownerName) return true;
-            return getMsgSender(m) === ownerName;
-        });
-        if (!targetMsg) return;
-        // 已领过的不能重复领
-        if (targetMsg.mediaData?.claimedBy?.includes(claimerName)) return;
-        const owner = ownerName || getMsgSender(targetMsg);
-        const ownerDisplay = owner === (userIdentity?.name) ? "你" : owner;
-        // 发红包的人自己不能领
-        if (claimerName === owner) return;
-        const totalRecipients = targetMsg.mediaData?.count || 1;
-        // 已领满则拒绝
-        if ((targetMsg.mediaData?.claimedBy?.length || 0) >= totalRecipients) return;
-        if (action === "accept") {
-            const prevAmounts = targetMsg.mediaData?.claimedAmounts || {};
-            const share = calcRedPacketShare(targetMsg.mediaData?.amount || 0, prevAmounts, totalRecipients);
-            const recipientCharacter = groupCharacters.find(item => item.name === claimerName);
-            if (recipientCharacter && targetMsg.role === "user") recordWalletCredit({ ownerId: recipientCharacter.id, amount: share,
-                currency: walletCurrency(targetMsg.mediaData?.currency), title: `收到 ${ownerDisplay}的红包`, category: "红包",
-                relatedMessageId: `${targetMsg.id}:${recipientCharacter.id}` });
-            const claimedBy = [...(targetMsg.mediaData?.claimedBy || []), claimerName];
-            const claimedAmounts = { ...prevAmounts, [claimerName]: share };
-            // 所有人都领完才标记 opened，否则保持 pending 让其他人继续领
-            const allClaimed = claimedBy.length >= totalRecipients;
-            const newStatus = allClaimed ? "opened" as const : "pending" as const;
-            const updatedData = { ...targetMsg.mediaData, status: newStatus, claimedBy, claimedAmounts };
-            updateMessageMediaData(targetMsg.id, updatedData);
-            setMessages(prev => prev.map(m => m.id === targetMsg.id ? { ...m, mediaData: updatedData } : m));
-            const sysMsg = pushChatMessage({
-                sessionId: session.id,
-                role: "assistant",
-                content: `${claimerName}领取了${ownerDisplay}的红包，金额:${share}元`,
-                mediaType: "accept_red_packet",
-                mediaData: { claimer: claimerName, owner: ownerDisplay },
-                senderName: claimerName,
-                ...buildAssistantActionEditMeta(`[${claimerName}领取了${ownerDisplay}的红包]`),
-            });
-            setMessages(prev => [...prev, sysMsg]);
-        } else {
-            const sysMsg = pushChatMessage({
-                sessionId: session.id,
-                role: "assistant",
-                content: `${claimerName}退回了${ownerDisplay}的红包`,
-                mediaType: "decline_red_packet",
-                mediaData: { claimer: claimerName, owner: ownerDisplay },
-                senderName: claimerName,
-                ...buildAssistantActionEditMeta(`[${claimerName}退回了${ownerDisplay}的红包]`),
-            });
-            setMessages(prev => [...prev, sysMsg]);
-        }
+    // All group claims (human or AI) go through the same wallet-and-message ledger.
+    const handleGroupRedPacketAction = (action: "accept" | "decline", claimerName: string, ownerName?: string, actorId?: string) => {
+        if (action !== "accept") return;
+        const recipient = groupCharacters.find(c => c.id === actorId) || groupCharacters.find(c => c.name === claimerName);
+        if (!recipient) return;
+        const fresh = loadChatMessages(session.id);
+        const target = [...fresh].reverse().find(m => m.mediaType === "red_packet" && (!ownerName || getMsgSender(m) === ownerName));
+        if (!target) return;
+        const result = claimGroupPacket(target, { id: recipient.id, characterId: recipient.id, name: recipient.name });
+        if (!result.message) { if (result.error === "红包已领完") showChatToast(`${recipient.name}没抢到，红包已领完`); return; }
+        const updated = result.message;
+        setMessages(prev => prev.map(m => m.id === updated.id ? updated : m));
+        const owner = getMsgSender(target);
+        const sys = pushChatMessage({ sessionId: session.id, role: "assistant", senderName: recipient.name, senderCharacterId: recipient.id,
+            content: `${recipient.name}领取了${owner}的红包，金额:${formatCurrencyAmount(result.amount!, walletCurrency(target.mediaData?.currency))}`,
+            mediaType: "accept_red_packet", mediaData: { claimer: recipient.name, owner },
+            ...buildAssistantActionEditMeta(`[${recipient.name}领取了${owner}的红包]`) });
+        setMessages(prev => [...prev, sys]);
     };
 
     // 转账：按 ownerName 匹配发送人，且验证 claimerName === recipientName
@@ -2718,14 +2662,14 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                     throwIfGenerationStopped(guard);
                     const claimer = part.mediaData?.claimer || r.characterName;
                     const owner = part.mediaData?.owner;
-                    handleGroupRedPacketAction("accept", claimer, owner);
+                    handleGroupRedPacketAction("accept", claimer, owner, r.characterId);
                     continue;
                 }
                 if (part.mediaType === "decline_red_packet") {
                     throwIfGenerationStopped(guard);
                     const claimer = part.mediaData?.claimer || r.characterName;
                     const owner = part.mediaData?.owner;
-                    handleGroupRedPacketAction("decline", claimer, owner);
+                    handleGroupRedPacketAction("decline", claimer, owner, r.characterId);
                     continue;
                 }
                 if (part.mediaType === "accept_transfer") {
@@ -3688,6 +3632,9 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
     ): { ok: boolean; mediaData?: ChatMessage["mediaData"] } => {
         if (mediaType !== "red_packet" && mediaType !== "transfer") return { ok: true, mediaData };
         const amount = getMoneyMediaAmount(mediaData);
+        if (session.isGroup && mediaType === "red_packet" && amount * moneyUnits(walletCurrency(mediaData?.currency)) < (mediaData?.count || 1)) {
+            showChatToast("总金额不足，每份至少需要一个最小货币单位"); return { ok: false };
+        }
         if (amount <= 0) {
             showChatToast("金额无效");
             return { ok: false };
