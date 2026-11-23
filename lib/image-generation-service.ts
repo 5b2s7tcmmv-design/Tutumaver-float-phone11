@@ -777,6 +777,11 @@ export async function generateImageFromConfiguredApi(params: {
         resolveBinding(loadBindingConfig(), params.characterId, params.appId).imageConfigId,
       );
   if (!settings.enabled) return null;
+  // Freeze this identity at generation start, even if bindings change while reading assets.
+  const generationUserIdentity = params.includeUserReference ? resolveUserIdentity(params.characterId, params.appId) : null;
+  if (params.includeUserReference && !generationUserIdentity) {
+    throw new Error("尚未设置用户身份，请先在配置绑定中选择当前用户。");
+  }
 
   const description = params.description.trim();
   if (!description) return null;
@@ -796,7 +801,7 @@ export async function generateImageFromConfiguredApi(params: {
     const characterFeaturePrompt = params.characterId
       ? settings.characterReferences?.[params.characterId]?.featurePrompt?.trim()
       : "";
-    const activeUser = params.includeUserReference ? resolveUserIdentity(params.characterId, params.appId) : null;
+    const activeUser = generationUserIdentity;
     const userFeaturePrompt = activeUser ? settings.userReferences?.[activeUser.id]?.featurePrompt?.trim() : "";
     if (characterFeaturePrompt) positiveParts.push(`角色外貌：${characterFeaturePrompt}`);
     if (userFeaturePrompt) positiveParts.push(`当前用户${activeUser?.name ? `「${activeUser.name}」` : ""}外貌：${userFeaturePrompt}`);
@@ -854,8 +859,11 @@ export async function generateImageFromConfiguredApi(params: {
       selectedImageDataUrl ? undefined : reference?.faceCrop));
     referenceRoles.push("character");
   }
-  const currentUser = params.includeUserReference ? resolveUserIdentity(params.characterId, params.appId) : null;
+  const currentUser = generationUserIdentity;
   const userReference = currentUser ? settings.userReferences?.[currentUser.id] : undefined;
+  if (params.includeUserReference && !userReference?.featurePrompt?.trim() && !userReference?.assetId) {
+    throw new Error("当前用户尚未设置外貌提示词或参考图，请先到图片设置 → 用户身份中添加。");
+  }
   if (params.includeUserReference && userReference?.assetId && userReference.enabled !== false) {
     const userImage = await getChatImageFromIndexedDB(userReference.assetId).catch(() => null);
     if (userImage) {
