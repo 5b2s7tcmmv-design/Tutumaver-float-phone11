@@ -21,13 +21,12 @@ export const CONTENT_PROMPTS={
  'novel.comments':['novel','章节评论','仅根据已发布正文与已有评论，语气、长短与态度自然多样，评分符合评论，不统一夸奖。'],
  'novel.reviews':['novel','全书书评','根据已发布章节评价作品，允许喜欢与不喜欢的读者并存，每条提供符合内容的1至5分评分。'],
  'calendar':['calendar','日历日程',DEFAULT_SCHEDULE_PROMPTS.calendar],
- 'weverse.schedule':['weverse','公开日程',DEFAULT_SCHEDULE_PROMPTS.weverse],
  'theqoo':['theqoo','论坛内容',DEFAULT_THEQOO_PROMPT],
 } as const;
 export type ContentPromptId=keyof typeof CONTENT_PROMPTS;
 export const CONTENT_APPS={twitter:'X',ytb:'YouTube',weverse:'Weverse',interview:'在场',question_box:'提问箱',theqoo:'Theqoo',diary:'iCity',novel:'NovelNow',calendar:'日历'};
 const KEY='ai_phone_content_prompts_v1';registerKvMigration(KEY);
 function stored():Partial<Record<ContentPromptId,string>>{try{return JSON.parse(kvGet(KEY)||'{}');}catch{return{};}}
-export function loadContentPrompt(id:ContentPromptId):string{if(id==='calendar')return loadSchedulePrompts().calendar;if(id==='weverse.schedule')return loadSchedulePrompts().weverse;if(id==='theqoo')return loadTheqooPrompt();return stored()[id]?.trim()||CONTENT_PROMPTS[id][2];}
-export function saveContentPrompt(id:ContentPromptId,text:string){if(id==='calendar'||id==='weverse.schedule'){saveSchedulePrompt(id==='calendar'?'calendar':'weverse',text);return;}if(id==='theqoo'){saveTheqooPrompt(text);return;}kvSet(KEY,JSON.stringify({...stored(),[id]:text.trim()||CONTENT_PROMPTS[id][2]}));}
+export function loadContentPrompt(id:ContentPromptId):string{if(id==='calendar')return loadSchedulePrompts().calendar;if(id==='theqoo')return loadTheqooPrompt();return stored()[id]?.trim()||CONTENT_PROMPTS[id][2];}
+export function saveContentPrompt(id:ContentPromptId,text:string){if(id==='calendar'){saveSchedulePrompt('calendar',text);return;}if(id==='theqoo'){saveTheqooPrompt(text);return;}kvSet(KEY,JSON.stringify({...stored(),[id]:text.trim()||CONTENT_PROMPTS[id][2]}));}
 export function contentPrompt(id:ContentPromptId):string{return `\n内容方向（仅用于${CONTENT_PROMPTS[id][1]}）：\n${loadContentPrompt(id)}\n以上只控制内容方向；输出结构、公开隐私边界、用户发言权限与独立语言规则继续遵守。\n`;}
