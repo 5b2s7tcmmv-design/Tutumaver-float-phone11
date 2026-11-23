@@ -417,8 +417,9 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                             <h3 className="settings-menu-section-title">Data & Rules</h3>
                             <div className="mt-[10px] flex flex-col gap-3">
                                 <CardGrid
-                                    items={SETTINGS_MENU.filter(item => ["presets", "worldbook", "regex", "data", "voiceFavorites", "aiBehavior", "contentPrompts"].includes(item.id)).map(makeCardItem)}
+                                    items={SETTINGS_MENU.filter(item => ["presets", "worldbook", "regex", "voiceFavorites", "aiBehavior", "contentPrompts"].includes(item.id)).map(makeCardItem)}
                                 />
+                                <FeaturedCard item={{...makeCardItem(SETTINGS_MENU.find(item => item.id === "data")!),desc:"导入、导出与备份"}} />
                                 <FeaturedCard item={bindingFeaturedItem} />
                             </div>
                         </div>
