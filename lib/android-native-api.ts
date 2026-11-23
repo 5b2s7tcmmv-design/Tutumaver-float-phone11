@@ -111,10 +111,17 @@ export async function fetchExternalApi(url: string, init: RequestInit = {}): Pro
     } else if (contentType.toLowerCase().includes("json")) {
       payload = String(response.data);
     } else if (typeof response.data === "string") {
-      // Native responseType=arraybuffer passes binary bodies as base64.
-      const raw = atob(response.data);
-      const bytes = Uint8Array.from(raw, char => char.charCodeAt(0));
-      payload = bytes as BodyInit;
+      // Native responseType=arraybuffer normally returns base64, including error bodies.
+      // Some gateways instead pass ordinary error text; keep the real HTTP error visible.
+      try {
+        const raw = atob(response.data);
+        const bytes = Uint8Array.from(raw, char => char.charCodeAt(0));
+        payload = contentType.toLowerCase().startsWith("text/")
+          ? new TextDecoder().decode(bytes)
+          : bytes as BodyInit;
+      } catch {
+        payload = response.data;
+      }
     }
   }
   return new Response([204, 205, 304].includes(response.status) ? null : payload, {
