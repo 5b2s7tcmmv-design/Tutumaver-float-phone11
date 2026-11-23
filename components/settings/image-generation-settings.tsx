@@ -67,6 +67,8 @@ export function ImageGenerationSettings() {
     const [settings, setSettings] = useState<ImageGenerationSettingsType>(DEFAULT_IMAGE_GENERATION_SETTINGS);
     const [characters, setCharacters] = useState<Character[]>([]);
     const [referencePreviews, setReferencePreviews] = useState<Record<string, string>>({});
+    const [referenceUploadingId, setReferenceUploadingId] = useState<string | null>(null);
+    const [referenceUploadNotice, setReferenceUploadNotice] = useState<Status | null>(null);
     const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null);
     const [cropCharacterId, setCropCharacterId] = useState<string | null>(null);
     const [cropDraft, setCropDraft] = useState({ x: 0.27, y: 0.12, size: 0.46 });
@@ -360,24 +362,46 @@ export function ImageGenerationSettings() {
     };
 
     const uploadReference = async (characterId: string, file: File) => {
-        const assetId = await saveChatImageToIndexedDB(file);
-        const current = settings.characterReferences?.[characterId];
-        const faceCrop = current?.faceCrop || { x: 0.27, y: 0.12, size: 0.46 };
-        persist({
-            ...settings,
-            characterReferences: {
-                ...(settings.characterReferences || {}),
-                [characterId]: {
-                    ...current,
-                    assetId,
-                    updatedAt: Date.now(),
-                    enabled: true,
-                    faceCrop,
+        if (referenceUploadingId) return;
+        setReferenceUploadingId(characterId);
+        setReferenceUploadNotice(null);
+        try {
+            if (!file.size) throw new Error("图片文件为空，请重新选择。");
+            if (!file.type.startsWith("image/")) throw new Error("请选择支持的图片文件。");
+            const assetId = await saveChatImageToIndexedDB(file);
+            // IndexedDB can be unavailable without throwing during write: always verify before binding.
+            const savedImage = await getChatImageFromIndexedDB(assetId);
+            if (!savedImage?.startsWith("data:image/")) {
+                throw new Error("参考图未能写入本地图片库，请检查存储空间或更换图片。");
+            }
+            const current = settings.characterReferences?.[characterId];
+            const faceCrop = current?.faceCrop || { x: 0.27, y: 0.12, size: 0.46 };
+            persist({
+                ...settings,
+                characterReferences: {
+                    ...(settings.characterReferences || {}),
+                    [characterId]: {
+                        ...current,
+                        assetId,
+                        updatedAt: Date.now(),
+                        enabled: true,
+                        faceCrop,
+                    },
                 },
-            },
-        });
-        setCropDraft(faceCrop);
-        setCropCharacterId(characterId);
+            });
+            setReferencePreviews(previous => ({ ...previous, [characterId]: savedImage }));
+            setCropDraft(faceCrop);
+            setCropCharacterId(characterId);
+            setReferenceUploadNotice({ success: true, message: "参考图已保存，请确认脸部选区。" });
+        } catch (error) {
+            const detail = error instanceof Error ? error.message : String(error);
+            const message = detail.includes("动图体积超出限制") ? "GIF 参考图需小于 3MB，请更换图片。"
+                : detail.includes("Failed to decode image") ? "无法读取图片格式，请尝试 JPG、PNG 或 WebP。"
+                : detail || "参考图保存失败，请重试。";
+            setReferenceUploadNotice({ success: false, message });
+        } finally {
+            setReferenceUploadingId(null);
+        }
     };
 
     const updateCharacterReference = (
@@ -1118,10 +1142,11 @@ export function ImageGenerationSettings() {
                                 <button
                                     type="button"
                                     className="ui-btn ui-btn-soft-action flex-1"
+                                    disabled={Boolean(referenceUploadingId)}
                                     onClick={() => {
                                         const input = document.createElement("input");
                                         input.type = "file";
-                                        input.accept = "image/*";
+                                        input.accept = "image/jpeg,image/png,image/webp,image/gif";
                                         input.onchange = async () => {
                                             const file = input.files?.[0];
                                             if (file) await uploadReference(selectedCharacter.id, file);
@@ -1130,7 +1155,7 @@ export function ImageGenerationSettings() {
                                     }}
                                 >
                                     <Upload size={16} />
-                                    {referencePreviews[selectedCharacter.id] ? "更换参考图" : "选择参考图"}
+                                    {referenceUploadingId === selectedCharacter.id ? "正在保存…" : referencePreviews[selectedCharacter.id] ? "更换参考图" : "选择参考图"}
                                 </button>
                                 {referencePreviews[selectedCharacter.id] && (
                                     <button type="button" className="ui-btn ui-btn-outline flex-1" onClick={() => openFaceCrop(selectedCharacter.id)}>
@@ -1140,6 +1165,7 @@ export function ImageGenerationSettings() {
                                 )}
                             </div>
                         )}
+                        {referenceUploadNotice && <p role="status" className={referenceUploadNotice.success ? "menu-desc" : "menu-desc text-red-600"}>{referenceUploadNotice.message}</p>}
                     </div>
                 )}
             </div>
