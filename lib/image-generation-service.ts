@@ -7,6 +7,7 @@ import { loadCharacters } from "./character-storage";
 import { storeMediaBlob } from "./media-cache-storage";
 import { generatedPhotoOwner, loadPhotoLibrary } from "./photo-library-storage";
 import { throwIfAborted } from "./abort-utils";
+import { fetchExternalApi, isAndroidNativeApi } from "./android-native-api";
 import {
   NOVELAI_COMMON_MODELS,
   getNovelAiResolution,
@@ -243,7 +244,7 @@ function extractModels(data: unknown): string[] {
 
 async function fetchImageUrlAsBase64(url: string, signal?: AbortSignal): Promise<{ b64: string; mimeType: string }> {
   throwIfAborted(signal);
-  const res = await fetch(url, { signal });
+  const res = await fetchExternalApi(url, { signal });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`图片 URL 下载失败 ${res.status}: ${text.slice(0, 160)}`);
@@ -298,9 +299,9 @@ export function filterLikelyImageModels(models: string[]): string[] {
 }
 
 export async function fetchImageGenerationModels(settings: Pick<ImageGenerationSettings, "apiKey" | "baseUrl" | "requestMode">): Promise<string[]> {
-  if (settings.requestMode === "direct") {
+  if (isAndroidNativeApi() || settings.requestMode === "direct") {
     try {
-      const res = await fetch(buildModelsUrl(settings.baseUrl), {
+      const res = await fetchExternalApi(buildModelsUrl(settings.baseUrl), {
         method: "GET",
         headers: { Authorization: `Bearer ${settings.apiKey}` },
       });
@@ -385,7 +386,7 @@ async function generateImageDirect(params: {
   if (signal) signal.addEventListener("abort", onOuterAbort, { once: true });
   const totalTimer = setTimeout(() => controller.abort(), 360_000);
   try {
-    return await parseImageGenerationResponse(await fetch(url, { method: "POST", headers, body, signal: controller.signal }), signal);
+    return await parseImageGenerationResponse(await fetchExternalApi(url, { method: "POST", headers, body, signal: controller.signal }), signal);
   } catch (error) {
     if (controller.signal.aborted && !signal?.aborted) {
       throw new Error(proxyBaseUrl ? "生图代理超时（360 秒未返回）" : "生图请求超时（360 秒未返回）");
@@ -416,6 +417,7 @@ async function generateImageViaServerOrProxy(params: {
   referenceImageDataUrls: string[];
   signal?: AbortSignal;
 }): Promise<ImageGenerationApiResponse> {
+  if (isAndroidNativeApi()) return generateImageDirect(params);
   if (IMAGE_GEN_PROXY_URL) {
     try {
       return await generateImageDirect({ ...params, proxyBaseUrl: IMAGE_GEN_PROXY_URL });
@@ -580,7 +582,7 @@ async function generateNovelAiDirect(params: {
   const totalTimer = setTimeout(() => controller.abort(), 180_000);
 
   try {
-    const res = await fetch(url, { method: "POST", headers, body, signal: controller.signal });
+    const res = await fetchExternalApi(url, { method: "POST", headers, body, signal: controller.signal });
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
       throw new Error(`NovelAI 接口报错 ${res.status}: ${errText.slice(0, 200)}`);
@@ -625,6 +627,7 @@ async function generateNovelAiViaServer(params: {
   prompt: string;
   signal?: AbortSignal;
 }): Promise<ImageGenerationApiResponse> {
+  if (isAndroidNativeApi()) return generateNovelAiDirect(params);
   const { apiKey, preset, prompt, signal } = params;
   throwIfAborted(signal);
 
@@ -719,7 +722,7 @@ export async function fetchNovelAiModels(apiKey: string): Promise<string[]> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
   try {
-    const res = await fetch("https://image.novelai.net/user/data", {
+    const res = await fetchExternalApi("https://image.novelai.net/user/data", {
       method: "GET",
       headers: { Authorization: `Bearer ${token}` },
       signal: controller.signal,
