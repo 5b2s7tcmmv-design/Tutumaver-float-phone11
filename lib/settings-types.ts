@@ -243,6 +243,7 @@ export type ImageGenerationSettings = {
     activeOpenAiPresetId?: string;
     // NovelAI 模式配置
     novelai?: NovelAiSettings;
+    userReferences?: Record<string, ImageGenerationSettings["characterReferences"][string]>;
     characterReferences: Record<string, {
         assetId?: string;
         updatedAt: number;
