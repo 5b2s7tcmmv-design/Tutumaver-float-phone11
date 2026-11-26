@@ -8672,3 +8672,9 @@
 .offline-music-mini,.offline-music-panel{max-width:100%;}
 
 .chat-room-wrapper[data-offline-notes="true"]>.offline-music-float{position:absolute!important;pointer-events:auto;max-width:calc(100% - 20px)!important;}
+
+/* 089: live straight paper fold, only paged TXT/EPUB reading. */
+.reading-fold-stage{touch-action:none;isolation:isolate;}
+.reading-fold-stage .reading-page-surface{background:transparent;}
+.reading-fold-target{z-index:0;pointer-events:none;}
+.reading-fold-paper{position:absolute;inset:0;width:100%;height:100%;z-index:2;pointer-events:none;overflow:hidden;}
