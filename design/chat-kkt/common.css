@@ -2701,3 +2701,14 @@
   line-height:var(--ii-text-line-height,1.6) !important;
   overflow-wrap:anywhere !important;
 }
+
+/* Mode state uses the same yellow in both skins and both themes. */
+@layer ii-kkt-room-palette {
+  :root .chat-input-bar .chat-plus-menu .chat-plus-menu-item[data-chat-mode="face-to-face"][data-active],
+  :root .chat-input-bar .chat-plus-menu .chat-plus-menu-item[data-chat-mode="face-to-face"][data-active] span,
+  :root .chat-input-bar .chat-plus-menu .chat-plus-menu-item[data-chat-mode="face-to-face"][data-active] svg {
+    color:#F3CA52 !important;
+    -webkit-text-fill-color:#F3CA52 !important;
+  }
+  :root .chat-input-bar .chat-plus-menu .chat-plus-menu-item[data-chat-mode="face-to-face"][data-active] svg { stroke:#F3CA52 !important; }
+}

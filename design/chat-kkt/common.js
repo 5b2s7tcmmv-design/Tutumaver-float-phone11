@@ -4,7 +4,7 @@ export default {
     id: "ii-kkt-chat-header-calls",
     name: "kakao经典键位插件",
     apiVersion: 1,
-    version: "0.13.1",
+    version: "0.13.2",
     description: "共通日夜图标、语音快捷入口、玻璃顶底栏与窄菜单；回车发送和翻译展开遵循原生设置。",
     permissions: ["ui"],
   },
@@ -20,6 +20,12 @@ export default {
 .chat-app[data-chat-theme="dark"] .chat-room-wrapper .chat-input-bar[data-ii-kkt-ready="true"] .chat-input-actions img[data-ii-kkt-art] {
   filter: none !important;
 }
+.chat-room-wrapper .chat-input-bar .chat-plus-menu .chat-plus-menu-item[data-chat-mode="face-to-face"][data-active],
+.chat-room-wrapper .chat-input-bar .chat-plus-menu .chat-plus-menu-item[data-chat-mode="face-to-face"][data-active] span,
+.chat-room-wrapper .chat-input-bar .chat-plus-menu .chat-plus-menu-item[data-chat-mode="face-to-face"][data-active] svg {
+  color:#F3CA52 !important; -webkit-text-fill-color:#F3CA52 !important;
+}
+.chat-room-wrapper .chat-input-bar .chat-plus-menu .chat-plus-menu-item[data-chat-mode="face-to-face"][data-active] svg { stroke:#F3CA52 !important; }
 }`;
     document.head.append(palette);
     const stopHeader = installHeader(ctx);

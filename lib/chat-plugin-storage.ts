@@ -55,7 +55,7 @@ function writeJson(key: string, value: unknown): void {
 export function loadChatPlugins(): InstalledChatPlugin[] {
     const raw = readJson<InstalledChatPlugin[]>(PLUGINS_KEY, []);
     const list = Array.isArray(raw) ? raw : [];
-    const builtinRevision = "0.13.1-kakao-classic";
+    const builtinRevision = "0.13.2-kakao-classic";
     const seeded = kvGet(BUILTIN_SEED_KEY);
     if (typeof window !== "undefined" && isKvHydrated() && seeded !== builtinRevision) {
         const index = list.findIndex(p => p?.manifest?.id === BUILTIN_KAKAO_PLUGIN_MANIFEST.id);
