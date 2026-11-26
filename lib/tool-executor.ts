@@ -25,7 +25,6 @@ import { executeCustomAppToolCall } from "./custom-app-tool-runtime";
 import { characterWorkspace, agentComputerRequest, isAgentComputerConfigured } from "./agent-computer";
 import { AGENT_COMPUTER_CAPABILITY_ID, CALENDAR_MANAGEMENT_CAPABILITY_ID, LOCAL_DATA_LIBRARY_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID, MUSIC_CONTROL_CAPABILITY_ID,
 SEND_FILE_CAPABILITY_ID, TIMED_WAKE_CAPABILITY_ID, TOOLBOX_MANAGEMENT_CAPABILITY_ID, getInternalCapability } from "./internal-capability-storage";
-import { createShortcutCommand, deliverShortcutCommand, waitForShortcutCommand } from "./shortcut-command-client";
 import { loadMemoryEntriesByType, saveMemoryEntry } from "./memory-storage";
 import type { MemoryEntry } from "./memory-types";
 import { loadCharacters } from "./character-storage";
@@ -72,10 +71,6 @@ import {
 import { makeTimedWakeId, saveTimedWakeSchedule } from "./timed-wake-storage";
 import { resolveUserIdentity } from "./settings-storage";
 import { attachAbortSignal, isAbortError, throwIfAborted } from "./abort-utils";
-import {
-    deleteShortcutCommandMediaUrl,
-    registerShortcutCommandMediaCleanup,
-} from "./shortcut-command-media-client";
 
 // ── Types ─────────────────────────────────────
 
@@ -804,59 +799,6 @@ async function executeInternalTool(call: ToolCall, context?: ToolExecutionContex
     }
 
     return executeMemoryWriteTool(call.args, capability, context);
-}
-
-function shortcutResultText(value: unknown): string {
-    if (typeof value === "string") return value.trim();
-    if (value && typeof value === "object" && !Array.isArray(value)) {
-        const record = value as Record<string, unknown>;
-        const text = record.text ?? record.message ?? record.value;
-        if (typeof text === "string" && text.trim()) return text.trim();
-    }
-    try {
-        return JSON.stringify(value ?? {});
-    } catch {
-        return String(value ?? "");
-    }
-}
-
-async function shortcutResultMedia(
-    value: unknown,
-    commandId: string,
-    retainRemote = false,
-): Promise<MediaAttachment[] | undefined> {
-    if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-    const record = value as Record<string, unknown>;
-    const rawUrl = record.mediaUrl ?? record.imageUrl ?? record.url;
-    const url = typeof rawUrl === "string" ? rawUrl.trim() : "";
-    if (!/^https?:\/\//i.test(url)) return undefined;
-    const rawType = String(record.mediaType ?? record.type ?? "image").toLowerCase();
-    const type: MediaAttachment["type"] = rawType === "audio" || rawType === "video" || rawType === "file" ? rawType : "image";
-    const managedImage = type === "image" && typeof record.storagePath === "string" && record.storagePath.length > 0;
-    let attachmentUrl = url;
-    try {
-        if (managedImage) {
-            const response = await fetch(url, { cache: "no-store" });
-            if (response.ok) {
-                const blob = await response.blob();
-                const mime = response.headers.get("content-type") || blob.type || "image/jpeg";
-                if (!mime.toLowerCase().startsWith("image/") || blob.size === 0) {
-                    throw new Error("图片响应内容无效。");
-                }
-                attachmentUrl = await storeMediaBlob(blob, mime, type);
-                if (retainRemote) registerShortcutCommandMediaCleanup(commandId, url);
-                else deleteShortcutCommandMediaUrl(url);
-            } else {
-                throw new Error(`图片下载返回 ${response.status}。`);
-            }
-        }
-    } catch (error) {
-        if (managedImage) {
-            const detail = error instanceof Error ? error.message : String(error);
-            throw new Error(`快捷指令图片读取失败：${detail}`);
-        }
-    }
-    return [{ type, url: attachmentUrl, title: typeof record.title === "string" ? record.title.slice(0, 120) : undefined }];
 }
 
 function isMusicControlToolName(name: string): boolean {
