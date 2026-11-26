@@ -434,7 +434,7 @@ Deno.serve(async (request: Request) => {
         service: "ai-phone-personal-push",
         version: 2,
         schemaVersion,
-        capabilities: schemaVersion >= 3 ? ["screen-chat-continuous"] : [],
+        capabilities: [],
       });
     }
 
@@ -605,7 +605,7 @@ Deno.serve(async (request: Request) => {
   from (
     select id
       from public.push_jobs
-     where status = 'pending' and execute_at <= now() 
+     where status = 'pending' and execute_at <= now() and kind in ('followup', 'reply_bailout', 'timed_task')
      order by execute_at asc
      limit 10
   ) j;
@@ -622,128 +622,6 @@ $CRON$)`);
       } finally {
         await sql.end({ timeout: 1 }).catch(() => {});
       }
-    }
-
-    if (action === "bridge-config" && request.method === "GET") {
-      const rows = await readJson<{ bridge_token: string }[]>(await rest(
-        `push_bridge_config?user_id=eq.${OWNER_ID}&select=bridge_token&limit=1`,
-      ));
-      if (rows[0]) return json({ ok: true, bridgeToken: rows[0].bridge_token, hasConfig: true });
-      const token = randomHex(18);
-      await readJson(await rest("push_bridge_config", {
-        method: "POST",
-        headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
-        body: JSON.stringify([{ user_id: OWNER_ID, bridge_token: token }]),
-      }));
-      return json({ ok: true, bridgeToken: token, hasConfig: false });
-    }
-
-    if (action === "bridge-sync" && request.method === "POST") {
-      // 现实桥离线联动配置同步：规则/云配置/触发状态 + 各规则 prompt 快照。
-      // 云配置与快照用 payload_key 加密落库（与站点版同一格式，push-bridge 直接解）。
-      const body = await request.json().catch(() => ({})) as Record<string, unknown>;
-      const rules = Array.isArray(body.rules) ? body.rules : [];
-      if (JSON.stringify(rules).length > 200_000) return json({ ok: false, error: "规则快照过大。" }, 413);
-      const config = await loadConfig();
-      if (!config.payload_key) throw new Error("推送配置未初始化。");
-      const cloudConfig = body.cloudConfig && typeof body.cloudConfig === "object"
-        ? await encryptPayload(JSON.stringify(body.cloudConfig), config.payload_key)
-        : null;
-      const ruleRuns = body.ruleRuns && typeof body.ruleRuns === "object" ? body.ruleRuns : {};
-      // 离线快捷动作目录：只保留云端需要的字段。description / parameterSchema
-      // 是给微信通道等云端提示词注入用的——parameterSchema 一剥，云端没法教
-      // 角色写带参数的标记，配了参数的动作在离线通道就永远只会光名调用。
-      const shortcutActions = (Array.isArray(body.shortcutActions) ? body.shortcutActions : [])
-        .slice(0, 20)
-        .map(entry => entry && typeof entry === "object" ? entry as Record<string, unknown> : {})
-        .filter(entry => cleanText(entry.name, 60) && cleanText(entry.shortcutName, 80))
-        .map(entry => ({
-          actionId: cleanText(entry.actionId, 100),
-          name: cleanText(entry.name, 60),
-          shortcutName: cleanText(entry.shortcutName, 80),
-          deliveryMode: cleanText(entry.deliveryMode, 10) === "email" ? "email" : "push",
-          resultMode: SHORTCUT_RESULT_MODES.has(cleanText(entry.resultMode, 20)) ? cleanText(entry.resultMode, 20) : "none",
-          expiresInSeconds: Math.max(30, Math.min(900, Number(entry.expiresInSeconds) || 120)),
-          ...(cleanText(entry.description, 200) ? { description: cleanText(entry.description, 200) } : {}),
-          ...(cleanText(entry.parameterSchema, 8000) ? { parameterSchema: cleanText(entry.parameterSchema, 8000) } : {}),
-        }));
-      // 站点桥令牌：邮件模式的动作要靠它请站点代发（个人云没有发信服务）。
-      // 客户端没带就保持原值，不要把已存的令牌洗掉。
-      const siteBridgeToken = cleanText(body.siteBridgeToken, 100);
-      const patched = await readJson<unknown[]>(await rest(`push_bridge_config?user_id=eq.${OWNER_ID}`, {
-        method: "PATCH",
-        headers: { Prefer: "return=representation" },
-        body: JSON.stringify({
-          rules,
-          ...(cloudConfig ? { cloud_config: cloudConfig } : {}),
-          rule_runs: ruleRuns,
-          shortcut_actions: shortcutActions,
-          updated_at: new Date().toISOString(),
-        }),
-      }));
-      if (patched.length === 0) {
-        await readJson(await rest("push_bridge_config", {
-          method: "POST",
-          headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
-          body: JSON.stringify([{
-            user_id: OWNER_ID,
-            bridge_token: randomHex(18),
-            rules,
-            ...(cloudConfig ? { cloud_config: cloudConfig } : {}),
-            rule_runs: ruleRuns,
-            shortcut_actions: shortcutActions,
-          }]),
-        }));
-      }
-
-      // 站点桥令牌单独写一次，且失败不致命：这一列是后加的，用户没重新部署过
-      // 个人云时它根本不存在，PostgREST 会 400。要是把它塞进上面那个 PATCH，
-      // readJson 一抛错就会把规则同步、快照、动作目录整块带崩——为一个只影响
-      // 邮件代发的字段赔掉整条同步，不值。写不进去只是邮件模式用不了。
-      if (siteBridgeToken) {
-        const tokenWrite = await rest(`push_bridge_config?user_id=eq.${OWNER_ID}`, {
-          method: "PATCH",
-          headers: { Prefer: "return=minimal" },
-          body: JSON.stringify({ site_bridge_token: siteBridgeToken }),
-        }).catch(() => null);
-        if (!tokenWrite || !tokenWrite.ok) {
-          console.warn("[bridge-sync] site_bridge_token 写入失败（个人云可能需要重新部署）");
-        }
-      }
-
-      const deleteIds = Array.isArray(body.deleteRuleIds)
-        ? body.deleteRuleIds.filter((id): id is string => typeof id === "string" && id.length > 0 && id.length < 100).slice(0, 100)
-        : [];
-      for (const ruleId of deleteIds) {
-        await readJson(await rest(
-          `push_bridge_snapshots?user_id=eq.${OWNER_ID}&rule_id=eq.${encodeURIComponent(ruleId)}`,
-          { method: "DELETE", headers: { Prefer: "return=representation" } },
-        )).catch(() => undefined);
-      }
-      const snapshots = Array.isArray(body.snapshots) ? body.snapshots.slice(0, 30) : [];
-      let saved = 0;
-      for (const snapshot of snapshots as Array<{ ruleId?: unknown; payload?: unknown }>) {
-        const ruleId = cleanText(snapshot?.ruleId, 100);
-        if (!ruleId || !snapshot?.payload || typeof snapshot.payload !== "object") continue;
-        const plainJson = JSON.stringify(snapshot.payload);
-        if (plainJson.length > MAX_PAYLOAD_BYTES) continue;
-        await readJson(await rest(
-          `push_bridge_snapshots?user_id=eq.${OWNER_ID}&rule_id=eq.${encodeURIComponent(ruleId)}`,
-          { method: "DELETE", headers: { Prefer: "return=representation" } },
-        )).catch(() => undefined);
-        await readJson(await rest("push_bridge_snapshots", {
-          method: "POST",
-          headers: { Prefer: "return=representation" },
-          body: JSON.stringify([{
-            user_id: OWNER_ID,
-            rule_id: ruleId,
-            payload: await encryptPayload(plainJson, config.payload_key),
-            updated_at: new Date().toISOString(),
-          }]),
-        }));
-        saved += 1;
-      }
-      return json({ ok: true, saved, deleted: deleteIds.length });
     }
 
     if (action === "test" && request.method === "POST") {
