@@ -66,7 +66,6 @@ export function TheqooApp({ onClose, onNotice: externalNotice, visible = true, o
   onBusyChange?: (isBusy: boolean) => void;
   onIdle?: () => void;
 }) {
-  useEffect(()=>{const fn=(e:Event)=>{const n=(e as CustomEvent).detail;if(n.app==='theqoo'){setPostId(n.targetId);setPage('detail');}};window.addEventListener('social-notification-open',fn);return()=>window.removeEventListener('social-notification-open',fn);},[]);
   const [state, setState] = useState<TheqooState>(() => loadTheqooState());
   const [category, setCategory] = useState("전체");
   const [page, setPage] = useState<Page>("home");

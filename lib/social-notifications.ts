@@ -1,6 +1,6 @@
 import {kvGet,kvSet,registerKvMigration} from './kv-db';
-export type SocialApp='twitter'|'diary'|'weverse'|'xiaohongshu'|'theqoo'|'question_box';
-export const SOCIAL_APPS:Record<SocialApp,string>={twitter:'X',diary:'iCity',weverse:'WVS',xiaohongshu:'小红书',theqoo:'theqoo',question_box:'提问箱'};
+export type SocialApp='twitter'|'diary'|'weverse'|'xiaohongshu'|'question_box';
+export const SOCIAL_APPS:Record<SocialApp,string>={twitter:'X',diary:'iCity',weverse:'WVS',xiaohongshu:'小红书',question_box:'提问箱'};
 export type SocialNotice={id:string;app:SocialApp;kind:'like'|'reply'|'dm'|'question'|'follow'|'save'|'live'|'post';targetId:string;targetType:string;at:number;accountId?:string;read:boolean;count:number;sourceIds?:string[]};
 type State={enabled:Partial<Record<SocialApp,boolean>>;seen:string[];initialized:boolean;notices:SocialNotice[]};const KEY='ai_phone_social_notifications_v1';registerKvMigration(KEY);export const SOCIAL_NOTICE_UPDATED='social-notices-updated';
 export function loadSocialNotices():State{try{return {...{enabled:{},seen:[],initialized:false,notices:[]},...JSON.parse(kvGet(KEY)||'{}')}}catch{return {enabled:{},seen:[],initialized:false,notices:[]}}}
