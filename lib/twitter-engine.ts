@@ -55,7 +55,7 @@ export async function generateTwitterText(input: {
   const apiConfig = slot.apiConfigId ? configs.find(row => row.id === slot.apiConfigId) : configs.find(row => row.apiKey?.trim()) || configs[0];
   if (!apiConfig) throw new Error(slot.apiConfigId ? "当前角色／X 绑定的文字 API 已不存在，请检查绑定。" : "先在设置中配置文字 API，才能生成角色内容。");
   if (!apiConfig.apiKey?.trim()) throw new Error(`当前角色／X 绑定的文字 API「${apiConfig.name || apiConfig.provider}」没有填写 Key，请在小手机设置中检查。`);
-  const presets = loadPresets();
+  const presets = loadPresets(character.id);
   const preset = presets.find(row => row.id === slot.presetId) ?? presets.find(row => row.builtIn) ?? null;
   const worldBooks = selectedTwitterWorldBooks(input.state, false, character.id);
   const regexes = (slot.regexIds || []).map(id => loadRegexes().find(row => row.id === id)).filter(Boolean) as RegexConfig[];
