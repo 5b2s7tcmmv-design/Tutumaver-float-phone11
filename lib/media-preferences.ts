@@ -4,7 +4,7 @@ export type PhotoDeliveryMode = "text" | "auto";
 export const MEDIA_APPS = { chat: "Chat", moments: "朋友圈", lysn: "LYSN", twitter: "X", weverse: "WVS Artist", diary: "iCity", theqoo: "Theqoo" } as const;
 export type MediaApp = keyof typeof MEDIA_APPS;
 export type MediaPreferences = { global: MediaPreference; apps: Partial<Record<MediaApp, MediaPreference>>; delivery: Partial<Record<MediaApp, PhotoDeliveryMode>> };
-export const DEFAULT_PHOTO_DELIVERY: Record<MediaApp, PhotoDeliveryMode> = { chat: "text", lysn: "text", moments: "auto", twitter: "auto", weverse: "auto", diary: "text", theqoo: "text" };
+export const DEFAULT_PHOTO_DELIVERY: Record<MediaApp, PhotoDeliveryMode> = { chat: "text", lysn: "text", moments: "text", twitter: "text", weverse: "text", diary: "text", theqoo: "text" };
 export function effectivePhotoDelivery(appId: string): PhotoDeliveryMode {
   if (!(appId in DEFAULT_PHOTO_DELIVERY)) return "text";
   const value = loadMediaPreferences().delivery[appId as MediaApp];
@@ -34,9 +34,9 @@ export function mediaPreferencePrompt(appId: string, actorId: string): string {
   if (!(appId in MEDIA_APPS)) return "";
   const mode = effectiveMediaPreference(appId,actorId);
   const recent = (decisions()[`${appId}:${actorId}`] || []).filter(item => Date.now() - item.at < 86400000);
-  const baseline = appId === "diary" ? "日记按真实生活自然配图，不必每篇有图。" : appId === "chat" || appId === "lysn" ? "这是聊天渠道，基础习惯明显少图。" : appId === "moments" ? "朋友圈适合生活记录，配图可以比聊天自然地多一些。" : appId === "twitter" ? "X 以短文字为主，偶尔配图。" : "WVS 艺人分享比私聊更适合配图，但不要求每帖有图。";
+  const baseline = appId === "diary" ? "匿名日记可按生活内容自然配图，文字描述不调用角色相册。" : appId === "chat" || appId === "lysn" ? "这是聊天渠道，基础习惯明显少图。" : appId === "moments" ? "朋友圈适合生活记录，配图可以比聊天自然地多一些。" : appId === "twitter" ? "X 以短文字为主，偶尔配图。" : "WVS 艺人分享比私聊更适合配图，但不要求每帖有图。";
   return ["AI 配图倾向（仅主动发图，不约束用户手动图片或明确的索图请求）：", baseline,
-    mode === "none" ? "纯文字：不要主动提出图片，不生成图片描述或图片标记。" : mode === "text" ? "文字优先：纯文字是默认；只有明确的视觉分享动机才发图，普通问候、疲惫或闲聊不要配图。" : mode === "balanced" ? "平衡：先判断视觉动机，生活记录、工作后台、旅行、食物、穿搭可自然配图，仍应有纯文字内容。" : "自由判断：按人设和平台习惯决定，不强制少图或多图。",
+    mode === "none" ? "纯文字：不要主动提出图片，不生成图片描述或图片标记。" : mode === "text" ? "文字优先：纯文字是默认；只有明确的视觉分享动机才发图，普通问候、疲惫或闲聊不要配图。" : mode === "balanced" ? "平衡：先判断视觉动机，生活记录、工作后台、旅行、食物、穿搭可自然配图，仍应有纯文字内容。" : "多发图：有自然视觉内容时积极配图，仍按平台与人设判断。",
     "先判断是否值得发图，再决定相册匹配或生图。相册丰富不是发图理由。不发图时不要填写照片描述、photoId 或发图标记。",
     "刚发过图片则降低下一次发图意愿；连续两次有图则下一次强烈倾向纯文字。近期发过自拍，进一步降低自拍意愿；明确索图、刚换造型或值得展示的新事物等强视觉动机可突破冷却。",
     recent.length ? `最近主动内容的媒体记录：${recent.map(item => item.image ? item.selfie ? "自拍" : "有图" : "纯文字").join(" → ")}。` : "",
