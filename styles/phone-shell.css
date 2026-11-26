@@ -460,8 +460,8 @@
   --slot-icon-offset-x: calc((var(--slot-size) - var(--slot-icon-width)) / 2);
   margin-top: 2px;
   display: grid;
-  grid-template-columns: repeat(4, var(--slot-size));
-  grid-template-rows: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--desktop-grid-cols, 4), var(--slot-size));
+  grid-template-rows: repeat(var(--desktop-grid-rows, 6), minmax(0, 1fr));
   column-gap: var(--slot-gap-x);
   row-gap: var(--slot-gap-y);
   min-height: 0;
@@ -1841,3 +1841,25 @@ html[data-zoom-fallback] .phone-shell-wrap {
 }
 .app-notice-switch[aria-checked="true"] { background:var(--notice-accent, var(--c-primary, #1d9bf0)); }
 .app-notice-switch[aria-checked="true"] > i { transform:translateX(14px); }
+
+/* Configurable desktop grid. Dock and status bar retain their own geometry. */
+.phone-shell .icon-grid { padding-bottom: max(0px, calc(var(--home-grid-bottom-trim, 0px) - 8px)); }
+.phone-shell[data-grid-cols="5"] .icon-grid { --slot-gap-x: 12px; }
+.phone-shell[data-grid-rows="7"] .icon-grid { --slot-gap-y: min(var(--home-row-gap-y, 8px), 8px); }
+.icon-grid .icon-item { min-height: 0; }
+.icon-grid .icon-glyph-box { width: var(--desktop-glyph-size, min(58px,var(--slot-size))); height: var(--desktop-glyph-size, min(58px,var(--slot-size))); }
+.icon-grid .icon-glyph { max-width: 52%; max-height: 52%; }
+.phone-shell[data-grid-hide-labels="true"] .icon-grid .icon-item .icon-label { display:none; }
+.phone-shell[data-grid-hide-labels="true"] .icon-grid .icon-item { align-content:center; }
+.desktop-grid-selects { margin-left:auto; display:flex; gap:6px; align-items:center; flex-shrink:0; }
+.desktop-grid-selects select { font:inherit; font-size:calc(12px * var(--app-text-scale,1)); color:var(--c-text-primary,inherit); border:0; border-radius:8px; background:var(--c-page-body-bg); padding:5px 6px; }
+.desktop-grid-setting .menu-label { min-width:0; }
+
+/* Scale desktop tiles including folder previews; expanded folders, slots and widgets retain their geometry. */
+.phone-shell .icon-grid .icon-item > .icon-glyph-box {
+  width: min(var(--slot-size, 58px), calc(var(--desktop-glyph-size, min(58px,var(--slot-size,58px))) * clamp(.7,var(--desktop-app-icon-scale,1),1.2)));
+  height: min(var(--slot-size, 58px), calc(var(--desktop-glyph-size, min(58px,var(--slot-size,58px))) * clamp(.7,var(--desktop-app-icon-scale,1),1.2)));
+}
+.desktop-icon-size-control { display:flex; align-items:center; justify-content:flex-end; gap:8px; flex:1; min-width:0; }
+.desktop-icon-size-control input { width:100%; max-width:112px; min-width:40px; }
+.desktop-icon-size-control .menu-desc { min-width:38px; text-align:right; white-space:nowrap; }

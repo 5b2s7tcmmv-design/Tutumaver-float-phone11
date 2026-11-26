@@ -127,10 +127,11 @@ import {
   resolveActiveIconSkins,
   type ThemeProfile
 } from "@/lib/theme-types";
-import { GRID_COLS, GRID_ROWS, WIDGET_SIZE_CELLS, WIDGET_CATALOG, type WidgetInstance, type WidgetType } from "@/lib/widget-types";
+import { GRID_COLS, GRID_ROWS, WIDGET_SIZE_CELLS, WIDGET_CATALOG, normalizeDesktopGrid, setDesktopGridDimensions, fitDesktopGridToWidgets, type WidgetInstance, type WidgetType } from "@/lib/widget-types";
 import { buildOccupancyGrid, canPlaceWidget, placeWidget, createDefaultWidgets, loadWidgets, saveWidgets, loadDIYTemplates, saveDIYTemplates } from "@/lib/widget-storage";
 import {
   createDefaultDesktopIconLayout,
+  normalizeDesktopIconLayout,
   getDesktopIconLayoutItems,
   getDesktopPageKey,
   getDesktopPageKeys,
@@ -153,6 +154,7 @@ import {
   ensureNativeWorldlineIcon,
   ensureNativeNovelIcon,
 } from "@/lib/desktop-layout-storage";
+import { reflowDesktopGrid } from "@/lib/desktop-grid-layout";
 import { WidgetRenderer } from "@/components/widgets/widget-renderer";
 import type { DIYWidgetTemplate } from "@/lib/widget-types";
 import { DebugPromptPanel } from "@/components/debug-prompt-panel";
@@ -524,8 +526,9 @@ function migratePageV1(raw: unknown, defaults: IconId[], pageWidgets: WidgetInst
 
 function normalizeLayout(raw: unknown, widgets: WidgetInstance[], dockIds: Set<DesktopIconId> = new Set(), folders: DesktopFolderMap = {}): DesktopLayout {
   if (!raw || typeof raw !== "object") return createDefaultDesktopIconLayout(widgets);
-  const candidate = raw as Record<string, unknown>;
   const folderIds = new Set(Object.keys(folders));
+  const grid = normalizeDesktopGrid({rows: GRID_ROWS, cols: GRID_COLS});
+  const candidate = reflowDesktopGrid(normalizeDesktopIconLayout(raw, folderIds, grid), widgets, grid).layout;
   const maxPage = Math.max(
     2,
     ...Object.keys(candidate).map(getDesktopPageNumber),
@@ -832,20 +835,7 @@ function pointerToGridCell(
 }
 
 function sanitizeWidgetsForLayout(_layout: DesktopLayout, widgets: WidgetInstance[]): WidgetInstance[] {
-  const normalized: WidgetInstance[] = [];
-  const pageNumbers = getDesktopPageKeysForState(_layout, widgets).map(getDesktopPageNumber);
-
-  for (const page of pageNumbers) {
-    for (const w of widgets.filter((widget) => widget.page === page)) {
-      // Widget-only collision: pass empty icons so icons don't block widget placement
-      const grid = buildOccupancyGrid([], normalized, page);
-      if (canPlaceWidget(grid, w.size, w.row, w.col)) {
-        normalized.push(w);
-      }
-    }
-  }
-
-  return normalized;
+  return reflowDesktopGrid({page1: [], page2: []}, widgets, normalizeDesktopGrid({rows: GRID_ROWS, cols: GRID_COLS})).widgets;
 }
 
 function sameWidgetOrder(a: WidgetInstance[], b: WidgetInstance[]): boolean {
@@ -1436,6 +1426,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets, initialL
   }, []);
 
   const [themeAssets, setThemeAssets] = useState<Record<string, string>>(() => initialThemeAssets ?? {});
+  const [slotSize, setSlotSize] = useState<number | null>(null);
   const [slotIconWidth, setSlotIconWidth] = useState<number | null>(null);
   const [slotIconHeight, setSlotIconHeight] = useState<number | null>(null);
   const [slotRowStep, setSlotRowStep] = useState<number | null>(null);
@@ -1764,12 +1755,14 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets, initialL
   useEffect(() => {
     hydrateKvDb().then(() => {
       const stored = readThemeProfile();
+      const rawWidgets = loadWidgets();
+      stored.desktopGrid = setDesktopGridDimensions(fitDesktopGridToWidgets(stored.desktopGrid, rawWidgets));
       setSavedTheme(stored);
       setDraftTheme(stored);
       setCustomApps(loadInstalledCustomApps());
 
       // Reload widgets + layout after hydration
-      const hydratedWidgets = loadWidgets();
+      const hydratedWidgets = sanitizeWidgetsForLayout({page1: [],page2: []}, rawWidgets);
       setWidgets(hydratedWidgets);
       // Dock loads first so page normalization can keep the two disjoint.
       const hydratedDock = loadDockLayout();
@@ -1864,7 +1857,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets, initialL
 
   // 其他模块（如工坊 agent 装应用）请求把已安装应用的图标摆上桌面
   const handleInstallCustomAppToDesktopRef = useRef<((app: InstalledCustomApp) => void) | null>(null);
-  const handleThemeDesktopChangeRef = useRef<((next: { widgets: WidgetInstance[]; iconLayout: DesktopLayout; dock?: DesktopIconId[]; folders?: DesktopFolderMap }) => void) | null>(null);
+  const handleThemeDesktopChangeRef = useRef<((next: { widgets: WidgetInstance[]; iconLayout: DesktopLayout; dock?: DesktopIconId[]; folders?: DesktopFolderMap; themeProfile?: ThemeProfile }) => void) | null>(null);
   const applyThemeRef = useRef<((next: ThemeProfile) => Promise<void>) | null>(null);
   useEffect(() => {
     const placeHandler = (e: Event) => {
@@ -1885,7 +1878,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets, initialL
         | { themeProfile?: ThemeProfile; iconLayout?: DesktopLayout; widgets?: WidgetInstance[]; dock?: DesktopIconId[]; folders?: DesktopFolderMap }
         | undefined;
       if (!detail?.themeProfile || !detail.iconLayout || !detail.widgets) return;
-      handleThemeDesktopChangeRef.current?.({ widgets: detail.widgets, iconLayout: detail.iconLayout, dock: detail.dock, folders: detail.folders });
+      handleThemeDesktopChangeRef.current?.({ widgets: detail.widgets, iconLayout: detail.iconLayout, dock: detail.dock, folders: detail.folders, themeProfile: detail.themeProfile });
       void applyThemeRef.current?.(detail.themeProfile);
     };
     window.addEventListener(THEME_PACKAGE_INSTALLED_EVENT, onThemePackage);
@@ -3676,6 +3669,17 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets, initialL
   }
 
   async function applyTheme(nextTheme: ThemeProfile): Promise<void> {
+    const grid = normalizeDesktopGrid(nextTheme.desktopGrid);
+    if (grid.rows !== GRID_ROWS || grid.cols !== GRID_COLS) {
+      const packed = reflowDesktopGrid(layoutRef.current, widgetsRef.current, grid);
+      setDesktopGridDimensions(grid);
+      layoutRef.current = packed.layout;
+      widgetsRef.current = packed.widgets;
+      setLayout(packed.layout);
+      setWidgets(packed.widgets);
+      saveWidgets(packed.widgets);
+      kvSet(ICON_LAYOUT_STORAGE_KEY, JSON.stringify(packed.layout));
+    }
     const persisted = writeThemeProfile(nextTheme);
     setSavedTheme(persisted);
     setDraftTheme(persisted);
@@ -3718,7 +3722,8 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets, initialL
     setCurrentPageIndex((index) => Math.min(index, Math.max(0, trimmedPageCount - 1)));
   }
 
-  function handleThemeDesktopChange(next: { widgets: WidgetInstance[]; iconLayout: DesktopLayout; dock?: DesktopIconId[]; folders?: DesktopFolderMap }): void {
+  function handleThemeDesktopChange(next: { widgets: WidgetInstance[]; iconLayout: DesktopLayout; dock?: DesktopIconId[]; folders?: DesktopFolderMap; themeProfile?: ThemeProfile }): void {
+    if (next.themeProfile) setDesktopGridDimensions(fitDesktopGridToWidgets(next.themeProfile.desktopGrid, next.widgets));
     const normalizedWidgets = sanitizeWidgetsForLayout(next.iconLayout, next.widgets);
     // 对账快照：用户此刻拥有的全部图标（页面 ∪ dock ∪ 文件夹成员）。
     // 导入/恢复默认是整桌替换，替换完谁没了着落就补回页面——
@@ -3845,23 +3850,6 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets, initialL
         return;
       }
 
-      const firstGlyph = gridEl.querySelector<HTMLElement>(".icon-glyph-box");
-      if (firstGlyph) {
-        const glyphRect = firstGlyph.getBoundingClientRect();
-        if (glyphRect.width > 0) {
-          const roundedIconWidth = Number(glyphRect.width.toFixed(2));
-          setSlotIconWidth((prev) =>
-            prev !== null && Math.abs(prev - roundedIconWidth) < 0.1 ? prev : roundedIconWidth
-          );
-        }
-        if (glyphRect.height > 0) {
-          const roundedIconHeight = Number(glyphRect.height.toFixed(2));
-          setSlotIconHeight((prev) =>
-            prev !== null && Math.abs(prev - roundedIconHeight) < 0.1 ? prev : roundedIconHeight
-          );
-        }
-      }
-
       const computed = window.getComputedStyle(gridEl);
       const rowGap = Number.parseFloat(computed.rowGap || "0");
       /* rect 高度是 border-box（含 padding），网格行轨道只占内容盒；
@@ -3873,6 +3861,17 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets, initialL
       const gridHeight = gridEl.getBoundingClientRect().height - padY;
       const rowHeight = (gridHeight - (GRID_ROWS - 1) * rowGap) / GRID_ROWS;
       const nextRowStep = rowHeight + rowGap;
+      const gridConfig = normalizeDesktopGrid(draftTheme.desktopGrid);
+      const colGap = parseFloat(computed.columnGap) || 0;
+      const available = gridEl.clientWidth - (parseFloat(computed.paddingLeft)||0) - (parseFloat(computed.paddingRight)||0);
+      if(available > 0 && rowHeight > 0) {
+        const cell = Math.max(12, Math.min(gridConfig.cols === 3 ? 78 : 66, (available - 20 - (GRID_COLS-1)*colGap)/GRID_COLS));
+        const label = gridConfig.hideLabels ? 0 : 20;
+        const glyph = Math.max(10, Math.min(gridConfig.hideLabels ? 66 : 58, cell, rowHeight-label));
+        setSlotSize(Math.floor(cell*100)/100);
+        setSlotIconWidth(Math.floor(glyph*100)/100);
+        setSlotIconHeight(Math.floor(glyph*100)/100);
+      }
       if (nextRowStep <= 0) {
         return;
       }
@@ -3904,7 +3903,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets, initialL
       window.removeEventListener("resize", onResize);
       observer?.disconnect();
     };
-  }, [activeApp, currentPage, currentPageIndex, currentIcons.length, currentPageWidgets.length]);
+  }, [activeApp, currentPage, currentPageIndex, currentIcons.length, currentPageWidgets.length, draftTheme.desktopGrid?.rows, draftTheme.desktopGrid?.cols, draftTheme.desktopGrid?.hideLabels]);
 
   const getSwipePageWidth = useCallback(() => {
     return swipeLayerRef.current?.getBoundingClientRect().width || shellRef.current?.getBoundingClientRect().width || 390;
@@ -4410,11 +4409,16 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets, initialL
               data-widget-effect={widgetEffect}
               data-glass-pass={glassPaintPass % 2}
               data-borders={draftTheme.enableGlobalBorder ? "on" : "off"}
+              data-grid-hide-labels={normalizeDesktopGrid(draftTheme.desktopGrid).hideLabels ? "true" : "false"}
+              data-grid-cols={normalizeDesktopGrid(draftTheme.desktopGrid).cols}
+              data-grid-rows={normalizeDesktopGrid(draftTheme.desktopGrid).rows}
               // 桌面态禁用原生长按菜单：安卓长按图标/组件想拖动时会呼出系统
               // contextmenu 或选中文字，打断拖拽。app 打开时不拦（保留聊天里
               // 长按存图、选中复制等原生能力）。
               onContextMenu={e => { if (!activeApp) e.preventDefault(); }}
               style={{
+                "--desktop-grid-cols": normalizeDesktopGrid(draftTheme.desktopGrid).cols,
+                "--desktop-grid-rows": normalizeDesktopGrid(draftTheme.desktopGrid).rows,
                 "--user-border-color": draftTheme.globalBorderColor,
                 "--desktop-outline-color": resolvedOutlineColor,
                 "--custom-global-stroke": draftTheme.cssOverrides["--desktop-icon-stroke"] || "2.0",
@@ -4805,9 +4809,10 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets, initialL
                             className={`icon-grid icon-grid-explicit icon-grid-${pageKey}`}
                             aria-label={pageIndex === 0 ? TEXT.ariaDesktopIcons : undefined}
                             style={
-                              slotIconWidth || slotIconHeight || slotRowStep
+                              slotSize || slotIconWidth || slotIconHeight || slotRowStep
                                 ? ({
-                                  ...(slotIconWidth ? { "--slot-icon-width": `${slotIconWidth}px` } : {}),
+                                  ...(slotSize ? { "--slot-size": `${slotSize}px` } : {}),
+                                  ...(slotIconWidth ? { "--slot-icon-width": `${slotIconWidth}px`, "--desktop-glyph-size": `${slotIconWidth}px` } : {}),
                                   ...(slotIconHeight ? { "--slot-icon-height": `${slotIconHeight}px` } : {}),
                                   ...(slotRowStep ? { "--slot-row-step": `${slotRowStep}px` } : {})
                                 } as CSSProperties)

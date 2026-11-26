@@ -33,6 +33,8 @@ import { readShellModeOverride, writeShellModeOverride, shellChannel, type Shell
 import {
   GRID_COLS,
   GRID_ROWS,
+  normalizeDesktopGrid,
+  type DesktopGridConfig,
   WIDGET_CATALOG,
   WIDGET_SIZE_CELLS,
   type WidgetInstance,
@@ -97,6 +99,7 @@ type PhoneThemeAppProps = {
     iconLayout: DesktopIconLayout;
     dock?: DesktopIconId[];
     folders?: DesktopFolderMap;
+    themeProfile?: ThemeProfile;
   }) => void;
   pageIcons: DesktopIconLayout;
   iconSkins: Record<string, string | null>;
@@ -216,6 +219,12 @@ export function PhoneThemeApp({
     }
     return "menu";
   });
+  const gridConfig = normalizeDesktopGrid(draft.desktopGrid);
+  const changeDesktopGrid = async (patch: Partial<DesktopGridConfig>) => {
+    const next = {...draft, desktopGrid: normalizeDesktopGrid({...gridConfig, ...patch})};
+    try { await onApply(next); onDraftChange(next); }
+    catch(error) { onNotice(error instanceof Error ? error.message : "桌面布局调整失败"); }
+  };
   const [showStatusBarAdjust, setShowStatusBarAdjust] = useState(false);
   const [showShellMode, setShowShellMode] = useState(false);
   const [shellMode, setShellMode] = useState<ShellModeOverride>("auto");
@@ -271,6 +280,7 @@ export function PhoneThemeApp({
         iconLayout: preset.iconLayout,
         dock: preset.dock,
         folders: preset.folders,
+        themeProfile: nextThemeProfile,
       });
       await onApply(nextThemeProfile);
       onDraftChange(nextThemeProfile);
@@ -322,7 +332,7 @@ export function PhoneThemeApp({
     setThemeTransferBusy(true);
     try {
       const result = await installThemePackageFile(file);
-      onDesktopThemeChange({ widgets: result.widgets, iconLayout: result.iconLayout, dock: result.dock, folders: result.folders });
+      onDesktopThemeChange({ widgets: result.widgets, iconLayout: result.iconLayout, dock: result.dock, folders: result.folders, themeProfile: result.themeProfile });
       await onApply(result.themeProfile);
       onDraftChange(result.themeProfile);
       setShowThemeTransfer(false);
@@ -339,7 +349,7 @@ export function PhoneThemeApp({
     setThemeTransferBusy(true);
     try {
       const result = await resetThemePackageState();
-      onDesktopThemeChange({ widgets: result.widgets, iconLayout: result.iconLayout, dock: result.dock, folders: result.folders });
+      onDesktopThemeChange({ widgets: result.widgets, iconLayout: result.iconLayout, dock: result.dock, folders: result.folders, themeProfile: result.themeProfile });
       await onApply(result.themeProfile);
       onDraftChange(result.themeProfile);
       setConfirmThemeReset(false);
@@ -398,6 +408,30 @@ export function PhoneThemeApp({
             <div>
               <h3 className="appearance-menu-section-title">System Settings</h3>
               <div className="menu-group mt-2.5">
+                <div className="menu-item desktop-grid-setting">
+                  <span className="card-icon card-icon-glass"><LayoutGrid size={20}/></span>
+                  <span className="menu-label appearance-menu-item-label">桌面行列</span>
+                  <div className="desktop-grid-selects">
+                    <select aria-label="桌面列数" value={gridConfig.cols} onChange={e=>void changeDesktopGrid({cols:Number(e.target.value)})}>{[3,4,5].map(n=><option key={n} value={n}>{n} 列</option>)}</select>
+                    <select aria-label="桌面行数" value={gridConfig.rows} onChange={e=>void changeDesktopGrid({rows:Number(e.target.value)})}>{[4,5,6,7].map(n=><option key={n} value={n}>{n} 行</option>)}</select>
+                  </div>
+                </div>
+                <label className="menu-item desktop-grid-setting desktop-icon-size-setting">
+                  <span className="card-icon card-icon-glass"><LayoutGrid size={20}/></span>
+                  <span className="menu-label appearance-menu-item-label">APP 图标大小</span>
+                  <span className="desktop-icon-size-control">
+                    <input className="ui-slider" type="range" min={70} max={120} step={1} aria-label="APP 图标大小" value={Math.max(70,Math.min(120,Math.round((Number(draft.cssOverrides["--desktop-app-icon-scale"])||1)*100)))} onChange={e=>{const next={...draft,cssOverrides:{...draft.cssOverrides,"--desktop-app-icon-scale":String(Number(e.target.value)/100)}};onDraftChange(next);void onApply(next);}}/>
+                    <span className="menu-desc tabular-nums">{Math.max(70,Math.min(120,Math.round((Number(draft.cssOverrides["--desktop-app-icon-scale"])||1)*100)))}%</span>
+                  </span>
+                </label>
+                <div className="menu-item desktop-grid-setting">
+                  <span className="card-icon card-icon-glass"><Type size={20}/></span>
+                  <span className="menu-label appearance-menu-item-label">隐藏应用名称</span>
+                  <label className="block w-10 h-[22px] cursor-pointer relative shrink-0 ml-auto">
+                    <input aria-label="隐藏应用名称" type="checkbox" checked={gridConfig.hideLabels} onChange={e=>void changeDesktopGrid({hideLabels:e.target.checked})} className="w-full h-full rounded-[11px] m-0 outline-none" style={{appearance:"none",backgroundColor:gridConfig.hideLabels?"var(--c-success)":"var(--c-page-body-bg)",transition:"0.2s"}}/>
+                    <div className="absolute w-[18px] h-[18px] bg-white rounded-full top-[2px] pointer-events-none" style={{left:gridConfig.hideLabels?20:2,transition:"0.2s",boxShadow:"0 2px 4px rgba(0,0,0,0.15)"}}/>
+                  </label>
+                </div>
                 {/* 状态栏开关 + 位置调节 */}
                 {(() => {
                   const caseItem = MENU_ITEMS.find(i => i.section === "case")!;
