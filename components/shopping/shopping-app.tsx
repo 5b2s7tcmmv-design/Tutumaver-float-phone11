@@ -1256,7 +1256,7 @@ export function ShoppingApp({ onClose, visible = true, onIdle, onBusyChange }: S
       cartItems: current.cartItems.filter(item => (item.currency || "CNY") !== cartCurrency),
     }));
     if (recipientId && notifyRecipient) {
-      for (const item of paidOrder.items) announceShoppingGift(recipientId, item, `${paidOrder.id}::${item.id}::notice`, paidOrder.recipientName || "收件人");
+      for (const item of paidOrder.items) announceShoppingGift(recipientId, item, `${paidOrder.id}::${item.id}::notice`, paidOrder.recipientName || "收件人", undefined, undefined, "shopping");
     }
     setSelectedTab("orders");
     setOrdersMode("shop");
