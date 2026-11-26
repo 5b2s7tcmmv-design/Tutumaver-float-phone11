@@ -16,13 +16,13 @@ import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
 import type { UserIdentity } from "./user-identity";
 import { getChatImageFromIndexedDB, saveChatImageToIndexedDB } from "@/lib/chat-asset-storage";
+import { isAndroidApp } from "@/lib/android-runtime";
 import {
     fetchImageGenerationModels,
     fetchNovelAiModels,
     filterLikelyImageModels,
     generateImageFromConfiguredApi,
 } from "@/lib/image-generation-service";
-import { isAndroidApp } from "@/lib/android-runtime";
 import { Alert } from "@/components/ui/feedback";
 import { Input, Select, Textarea, Toggle } from "@/components/ui/form";
 import { ConfirmDialog, ContentDialog } from "@/components/ui/modal";
@@ -832,13 +832,13 @@ export function ImageGenerationSettings() {
                             </div>
                         </div>
 
-                        <div className="flex flex-col gap-1">
+                        {!isAndroidApp() && <div className="flex flex-col gap-1">
                             <label className="menu-desc ml-1">请求方式</label>
                             <Select value={activeOpenAiPreset.requestMode} onChange={(event) => updateOpenAiPreset({ requestMode: event.target.value as ImageGenerationSettingsType["requestMode"] })}>
                                 <option value="server">服务端转发（推荐，可避免跨域报错）</option>
                                 <option value="direct">浏览器直连（需接口允许 CORS 跨域）</option>
                             </Select>
-                        </div>
+                        </div>}
 
                         <div className="flex flex-col gap-1">
                             <label className="menu-desc ml-1">Base URL</label>

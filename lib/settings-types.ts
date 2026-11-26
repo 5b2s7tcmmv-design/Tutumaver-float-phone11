@@ -342,7 +342,7 @@ export type BindingConfig = {
     memorySummaryApiConfigId?: string;
     /** Auxiliary API: used for embedding/vector recall (global, not per-character) */
     embeddingApiConfigId?: string;
-    /** Only used to index Photos uploads and re-analyze library photos. */
+    /** Used for Photos indexing/re-analysis and explicit offline manual recognition. */
     photoVisionApiConfigId?: string;
     /** Auxiliary API: used by the mascot assistant (global, not per-character) */
     mascotApiConfigId?: string;
