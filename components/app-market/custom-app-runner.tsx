@@ -1092,7 +1092,6 @@ export function CustomAppRunner({
           notifications: ["create", "list", "markRead", "markAllRead", "getBadge", "setBadge", "incrementBadge", "clearBadge"],
           tasks: ["schedule", "list", "cancel"],
           wallet: ["get", "pay"],
-          bridge: ["send", "readState"],
           geo: ["get", "watch", "clearWatch"],
         },
       };
