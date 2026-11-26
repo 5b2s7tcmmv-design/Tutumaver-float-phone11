@@ -1,5 +1,6 @@
 "use client";
 import {OfflineMusicIconSetting} from "./offline-music-icon-setting";
+import {DEFAULT_FACE_TO_FACE_ACTION_PROMPT} from "@/lib/chat-face-to-face";
 import { ChatCallArchivesPage } from "./chat-call-archives-page";
 
 import { loadCallFirstSpeaker, saveCallFirstSpeaker, type CallFirstSpeaker } from "@/lib/call-first-speaker";
@@ -479,6 +480,10 @@ export function ChatSettingsPanel({
     const [visionImagePromptLimit, setVisionImagePromptLimit] = useState(() => resolveVisionImagePromptLimit(session));
     const [visionLimitUsesGlobal, setVisionLimitUsesGlobal] = useState(session.visionImagePromptLimitUsesGlobal !== false);
     const [bilingualTranslationEnabled, setBilingualTranslationEnabled] = useState(session.bilingualTranslationEnabled !== false);
+    const [faceActions,setFaceActions]=useState(!!session.faceToFaceActions);
+    const [faceColor,setFaceColor]=useState(session.faceToFaceActionColor||"");
+    const [faceSize,setFaceSize]=useState(session.faceToFaceActionSize??100);
+    const [facePrompt,setFacePrompt]=useState(session.faceToFaceActionPrompt||DEFAULT_FACE_TO_FACE_ACTION_PROMPT);
     const [offlineSummaryRetry, setOfflineSummaryRetry] = useState(session.offlineSummaryRetry !== false);
     const [collapseBilingualTranslation, setCollapseBilingualTranslation] = useState(session.collapseBilingualTranslation !== false);
     const [discardInvalidStickers, setDiscardInvalidStickers] = useState(session.discardInvalidStickers === true);
@@ -1598,7 +1603,11 @@ export function ChatSettingsPanel({
                                 />
                             </div>
                         </div>
-                        {!session.isGroup&&<OfflineMusicIconSetting/>}
+                        {!session.isSpectator&&<>
+                            <div className="menu-item"><ChatInfoIcon icon={Sparkles} color={BINDING_ACCENTS.preset}/><div className="menu-label-group"><span className="menu-label">线上走线下动作描写</span><span className="menu-desc">控制TA是否描写动作；你发送【动作正文】不受此开关限制</span></div><div className="menu-right"><Toggle checked={faceActions} onChange={value=>{setFaceActions(value);updateSession({faceToFaceActions:value});}}/></div></div>
+                            {faceActions&&<div className="chat-face-settings"><label className="menu-label">动作字体颜色 <input type="color" value={faceColor||"#909090"} onChange={e=>{setFaceColor(e.target.value);updateSession({faceToFaceActionColor:e.target.value});}}/></label><label className="menu-label">动作字体大小 · {faceSize}%<input type="range" min="70" max="150" step="5" value={faceSize} onChange={e=>{const value=Number(e.target.value);setFaceSize(value);updateSession({faceToFaceActionSize:value});}}/></label><p className="chat-face-to-face-action" style={{color:faceColor||undefined,fontSize:faceSize+"%"}}>他放下手里的杯子，顺手拉开旁边的椅子。</p><button type="button" className="ui-btn ui-btn-outline" onClick={()=>{setFaceColor("");setFaceSize(100);updateSession({faceToFaceActionColor:"",faceToFaceActionSize:100});}}>恢复默认样式</button><label className="menu-label">动作描写提示词<textarea className="ui-input" rows={6} value={facePrompt} onChange={e=>{setFacePrompt(e.target.value);updateSession({faceToFaceActionPrompt:e.target.value});}}/></label><button type="button" className="ui-btn ui-btn-outline" onClick={()=>{setFacePrompt(DEFAULT_FACE_TO_FACE_ACTION_PROMPT);updateSession({faceToFaceActionPrompt:DEFAULT_FACE_TO_FACE_ACTION_PROMPT});}}>恢复默认提示词</button></div>}
+                            {!session.isGroup&&<OfflineMusicIconSetting/>}
+                        </>}
                         {session.isGroup ? (
                         <div className="menu-item">
                             <ChatInfoIcon icon={Sparkles} color={BINDING_ACCENTS.preset} />

@@ -43,6 +43,8 @@ import { PhotoInputModal, TextPhotoModal, VoiceRecordModal, RedPacketModal, Loca
 import { EmojiPanel, StickerPanel } from "./emoji-panel";
 import { StickerSearchSuggest } from "./sticker-search-suggest";
 import { StateValuesPanel } from "./state-values-panel";
+import {FACE_SCENE_ID,faceActionText,parseUserFaceAction,canQuoteChatMessage} from "@/lib/chat-face-to-face";
+import { ChatStateDialog } from "./chat-state-dialog";
 import { generateChatCompletion, generateOfflineChatCompletion, flattenCompletionResult, ChatEngineError } from "@/lib/chat-engine";
 import { offlineSpeakerMap } from "@/lib/offline-speakers";
 import { RotateCcw, Volume2 } from "lucide-react";
@@ -151,7 +153,8 @@ function isCallSysMsg(msg: ChatMessage): boolean {
 const ACTION_MEDIA_TYPES = new Set(["poke", "accept_red_packet", "decline_red_packet", "accept_transfer", "decline_transfer", "accept_payment_request", "decline_payment_request", "group_admin_notice"]);
 // 拍一拍/群管理通知/通话留痕渲染成灰色系统小字，没有 💭 面板入口——
 // 状态栏/内心独白/状态值挂上去会被显示层吞掉，挂载时必须跳过它们
-function canCarryFoldedPanel(part: { content?: string; mediaType?: ChatMessage["mediaType"] }): boolean {
+function canCarryFoldedPanel(part: { content?: string; mediaType?: ChatMessage["mediaType"]; faceToFaceAction?: boolean }): boolean {
+    if(part.faceToFaceAction||part.content?.startsWith("【现场动作】"))return false;
     if (part.mediaType === "poke" || part.mediaType === "group_admin_notice") return false;
     return !CALL_SYS_RE.test(part.content || "");
 }
@@ -741,6 +744,8 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     showStickerPanel: boolean;
     showPlusMenu: boolean;
     customPlusActions: RegisteredCustomAppChatPlusAction[];
+    faceToFaceEnabled?: boolean;
+    onToggleFaceToFace?: () => void;
     onClearQuote: () => void;
     onToggleOfflineMode: () => void;
     onClosePanels: () => void;
@@ -773,6 +778,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     showStickerPanel,
     showPlusMenu,
     customPlusActions,
+    faceToFaceEnabled,onToggleFaceToFace,
     onClearQuote,
     onToggleOfflineMode,
     onClosePanels,
@@ -856,6 +862,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     );
     const suggestEnabled = !memberInputLocked && !panelOpen && !suggestClosed && inputText.trim().length > 0;
     const plusMenuItems = [
+        ...(onToggleFaceToFace?[{icon:<Users size={22} strokeWidth={1.5} color={faceToFaceEnabled?"#F3CA52":"var(--c-text)"}/>,label:"线上走线下",active:!!faceToFaceEnabled,onClick:onToggleFaceToFace}]:[]),
         ...(!isGroup ? [{icon: <Users size={22} strokeWidth={1.5}/>, label: "推荐好友名片", onClick: () => onOpenRichModal("recommend_contact")}] : []),
         ...(!isGroup&&characterId?[{icon:<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--c-text)" strokeWidth="1.5"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M10 18h4"/></svg>,label:"让TA查手机",onClick:()=>window.dispatchEvent(new CustomEvent('reverse-invite',{detail:{owner:characterId}}))}]:[]),
         { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--c-text)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>, label: "照片墙", onClick: () => onOpenRichModal("photo") },
@@ -880,7 +887,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     ];
 
     return (
-        <div className="chat-input-bar chat-room-main-pane flex flex-col" data-ui="input" data-reverse-control={reverseControl?.paused?"true":undefined}>
+        <div className="chat-input-bar chat-room-main-pane flex flex-col" data-ui="input" data-face-to-face-active={faceToFaceEnabled && !isSpectator ? "true" : undefined} data-reverse-control={reverseControl?.paused?"true":undefined}>
             <ReverseComposerStatus/>
             {theaterMode && (
                 <div className="chat-theater-mode-strip" role="status">
@@ -965,7 +972,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
                     ? "写下希望他们下一轮怎么聊……"
                     : (textInputDisabled
                         ? `禁言中，剩余${Math.ceil(muteRemainingMs / 60000)}分钟`
-                        : (theaterMode ? "写下番外指令..." : undefined))}
+                        : (theaterMode ? "写下番外指令..." : faceToFaceEnabled ? "台词直接输入，动作用【…】" : undefined))}
             />
 
             <div className="chat-input-actions">
@@ -986,7 +993,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
                 <button onClick={onToggleStickerPanel} disabled={memberInputLocked} className="ui-bare-btn text-[var(--c-text)]" style={memberInputLocked ? { opacity: 0.35 } : undefined}>
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15.5 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3Z" /><polyline points="14 3 14 8 21 8" /><path d="M8 13h0" /><path d="M16 13h0" /><path d="M10 17c.5.3 1.2.5 2 .5s1.5-.2 2-.5" /></svg>
                 </button>
-                <button onClick={onTogglePlusMenu} disabled={memberInputLocked} className="ui-bare-btn text-[var(--c-text)]" style={memberInputLocked ? { opacity: 0.35 } : undefined}>
+                <button onClick={onTogglePlusMenu} data-chat-plus-trigger="" aria-label={faceToFaceEnabled && !isSpectator ? "更多操作，线上走线下已开启" : "更多操作"} title={faceToFaceEnabled && !isSpectator ? "线上走线下已开启" : "更多操作"} disabled={memberInputLocked} className="ui-bare-btn text-[var(--c-text)]" style={memberInputLocked ? { opacity: 0.35 } : undefined}>
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="16" /><line x1="8" y1="12" x2="16" y2="12" /></svg>
                 </button>
                 <button
@@ -1039,7 +1046,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
             {showPlusMenu && (
                 <div className="chat-plus-menu">
                     {plusMenuItems.map((item, i) => (
-                        <div key={`${item.label}-${i}`} onClick={item.onClick} className="chat-plus-menu-item flex flex-col items-center gap-1.5 cursor-pointer" {...(item.active ? { "data-active": "" } : {})}>
+                        <div key={`${item.label}-${i}`} onClick={item.onClick} className="chat-plus-menu-item flex flex-col items-center gap-1.5 cursor-pointer" {...(item.active ? { "data-active": "" } : {})} {...(item.label === "线上走线下" ? { "data-chat-mode": "face-to-face", role: "switch", "aria-label": item.label, "aria-checked": !!item.active, tabIndex: 0, onKeyDown: (event: React.KeyboardEvent) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); item.onClick(); } } } : {})}>
                             <div className="chat-plus-icon-box">
                                 {item.icon}
                             </div>
@@ -1271,6 +1278,7 @@ const OfflineTextInputBar = memo(forwardRef<OfflineTextInputHandle, React.Compon
 
 
 export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
+    const [, refreshFaceMode] = useState(0);
     const reverseControl=useReverseVisit();
     const reverseWindow=reverseControl?.messageWindows?.[session.id]?.join("|");
     useEffect(()=>{if(!reverseControl)return;const all=loadChatMessages(session.id);const ids=activeReverse()?.messageWindows?.[session.id];setMessages(ids?all.filter(m=>ids.includes(m.id)):all.slice(-50));},[session.id,reverseControl?.id,reverseWindow]);
@@ -1361,6 +1369,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
     const [mediaDetailMsg, setMediaDetailMsg] = useState<ChatMessage | null>(null);
     // Quote reply
     const [quotingMessage, setQuotingMessage] = useState<ChatMessage | null>(null);
+    useEffect(() => { if (quotingMessage && !canQuoteChatMessage(quotingMessage)) setQuotingMessage(null); }, [quotingMessage]);
     // Emoji panel
     const [showEmojiPanel, setShowEmojiPanel] = useState(false);
     const [showStickerPanel, setShowStickerPanel] = useState(false);
@@ -1739,7 +1748,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         let fuzzy: ChatMessage | undefined;
         for (let index = history.length - 1; index >= 0; index -= 1) {
             const candidate = history[index];
-            if (candidate.role === "system" || candidate.role === "tool") continue;
+            if (candidate.role === "system" || candidate.role === "tool" || !canQuoteChatMessage(candidate)) continue;
             const candidateVariants = variants(candidate.mediaType === "audio" ? chatQuotePreview(candidate) : candidate.content || candidate.mediaData?.label || "");
             if (candidateVariants.length === 0) continue;
             const exact = previewVariants.some(preview => candidateVariants.includes(preview));
@@ -2586,6 +2595,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         let isFirst = true;
         for (const r of results) {
             throwIfGenerationStopped(guard);
+            if(r.characterId===FACE_SCENE_ID){if(session.faceToFaceEnabled&&session.faceToFaceActions){const msg=pushChatMessage({sessionId:session.id,role:"assistant",content:r.responseText,faceToFaceMode:true,faceToFaceKind:"action",responseBatchId:createResponseBatchId(),responseRoundId,editableResponseText,rawResponseText:r.responseText});msgsSetter(prev=>[...prev,msg]);}continue;}
             // 被踢出或禁言中的角色本轮不再发声
             if (!(session.participantIds || []).includes(r.characterId)) continue;
             if (isGroupMuted(session, r.characterId)) continue;
@@ -2713,6 +2723,8 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                     content: part.content,
                     mediaType: part.mediaType,
                     mediaData: partMediaData,
+                    faceToFaceMode:session.faceToFaceEnabled?true:undefined,
+                    faceToFaceKind:session.faceToFaceEnabled?"speech":undefined,
                     responseBatchId,
                     rawResponseText: r.responseText,
                     responseRoundId,
@@ -2987,7 +2999,8 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             ? getLatestStateValues(session.id)
             : getLatestCharacterStateValues(session.contactId);
 
-        const { parts: rawParts, stateValues, freshStateValues, statusPanel, innerMonologue, characterRemarkForUser } = parseAIResponse(aiResponseText, previousState);
+        const faceMode=!session.isGroup&&session.faceToFaceEnabled===true;
+        const { parts: rawParts, stateValues, freshStateValues, statusPanel, innerMonologue, characterRemarkForUser } = parseAIResponse(aiResponseText, previousState,faceMode?{actions:!!session.faceToFaceActions}:undefined);
         if (!session.isGroup && characterRemarkForUser) {
             const normalizedRemark = characterRemarkForUser.replace(/[\r\n]/g, " ").trim().slice(0, 20);
             if (normalizedRemark) {
@@ -3119,6 +3132,8 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                 sessionId: session.id,
                 role: "assistant",
                 content: part.content,
+                faceToFaceMode:faceMode?true:undefined,
+                faceToFaceKind:faceMode?(part.faceToFaceAction?"action":"speech"):undefined,
                 mediaType,
                 mediaData: part.mediaType === "quote" ? {...part.mediaData,...resolveGroupQuoteMetadata(part.mediaData?.quotePreview)} : part.mediaData,
                 responseBatchId,
@@ -3900,7 +3915,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                 const results = await generateGroupChatCompletion(session, latestMessages, {
                     onReasoning: (t) => { pendingGroupReasoning = t; },
                     onStreamDelta: (delta) => {
-                        if (!isCurrentGeneration()) return;
+                        if (!isCurrentGeneration()||session.faceToFaceEnabled) return;
                         streamAccumRef.current += delta;
                         // 群聊全文解析较重：合并到 rAF 下一帧执行，避免一帧多段增量重复解析
                         if (streamParseFrameRef.current) return;
@@ -3929,6 +3944,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                         streamAccumRef.current = "";
                         setStreamPreview(null);
                         if (!text.trim() || !senderInfo) return;
+                        if(senderInfo.characterId===FACE_SCENE_ID){if(session.faceToFaceEnabled&&session.faceToFaceActions){const msg=pushChatMessage({sessionId:session.id,role:"assistant",content:text,faceToFaceMode:true,faceToFaceKind:"action",responseBatchId:options?.responseBatchId||createResponseBatchId(),responseRoundId:senderInfo.responseRoundId,editableResponseText:senderInfo.editableResponseText,rawResponseText:text});setMessages(prev=>[...prev,msg]);}return;}
                         const cleanedEditableText = cleanEditableAssistantText(text);
                         if (!cleanedEditableText) return;
                         const roundReasoning = pendingGroupReasoning;
@@ -3952,6 +3968,8 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                                 sessionId: session.id,
                                 role: "assistant",
                                 content: part.content,
+                                faceToFaceMode:session.faceToFaceEnabled?true:undefined,
+                                faceToFaceKind:session.faceToFaceEnabled?"speech":undefined,
                                 mediaType: part.mediaType,
                                 mediaData: part.mediaType === "quote" ? {...part.mediaData,...resolveGroupQuoteMetadata(part.mediaData?.quotePreview)} : part.mediaData,
                                 responseBatchId,
@@ -4291,8 +4309,8 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         cancelFollowUp(session.id);
 
         // If quoting a message, send as quote type
-        const isQuoting = !!quotingMessage;
-        const quoteData = quotingMessage ? {
+        const isQuoting = !!quotingMessage && canQuoteChatMessage(quotingMessage);
+        const quoteData = isQuoting && quotingMessage ? {
             quoteMessageId: quotingMessage.id,
             quotePreview: chatQuotePreview(quotingMessage),
             quoteRole: quotingMessage.role,
@@ -4310,15 +4328,20 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         const commitSendText = (currentText: string) => {
             // 掷骰子：整条消息就是骰子图标时，发骰子气泡（内容仅图标），
             // 点数由系统旁白公布——避免结果挂在 user 消息上被角色模仿格式
-            const diceOnly = !isQuoting && isDiceOnlyMessage(currentText);
+            const faceMode=!session.isSpectator&&session.faceToFaceEnabled===true;
+            const faceAction=faceMode?parseUserFaceAction(currentText):null;
+            const quoteThisMessage = isQuoting && !faceAction;
+            const diceOnly = !faceAction && !quoteThisMessage && isDiceOnlyMessage(currentText);
             const diceFace = diceOnly ? rollChatDiceFace() : 0;
 
             const newMsg = pushChatMessage({
                 sessionId: session.id,
                 role: "user",
-                content: currentText,
-                mediaType: diceOnly ? "dice" : isQuoting ? "quote" : undefined,
-                mediaData: diceOnly ? { diceFace } : isQuoting ? quoteData : undefined,
+                content: faceAction?`【现场动作】${faceAction}【/现场动作】`:currentText,
+                faceToFaceMode:faceMode?true:undefined,
+                faceToFaceKind:faceMode?(faceAction?"action":"speech"):undefined,
+                mediaType: diceOnly ? "dice" : quoteThisMessage ? "quote" : undefined,
+                mediaData: diceOnly ? { diceFace } : quoteThisMessage ? quoteData : undefined,
             });
 
             noteReverseUserMessage(newMsg);
@@ -4782,9 +4805,12 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         }
         const isEditingSystemInstruction = originalMessage ? isSystemInstructionMessage(originalMessage) : false;
         const placement = originalMessage?.role === "user" ? 1 : 2;
-        const nextContent = isEditingSystemInstruction
+        const editedContent = isEditingSystemInstruction
             ? editingContent.trim()
             : applyEditTextRegex(editingContent.trim(), placement, false);
+        const nextContent = originalMessage?.faceToFaceKind === "action"
+            ? `【现场动作】${parseUserFaceAction(editedContent) ?? faceActionText(editedContent)}【/现场动作】`
+            : editedContent;
         if (originalMessage?.mediaType === "audio") {
             // 语音条的显示文字和 AI 上下文都读 mediaData.label，改 content 不生效；
             // synthesizedFromText 保留旧值，AI 语音会因文字不一致自动重新合成
@@ -4914,11 +4940,12 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             groupCharacters.forEach((groupCharacter) => {
                 nameToId.set(groupCharacter.name, groupCharacter.id);
             });
-            if (!hasKnownGroupSenderPrefix(editedResponseContent)) {
+            const historicalFace=roundMessages.some(m=>m.faceToFaceMode);
+            if (!hasKnownGroupSenderPrefix(editedResponseContent)&&!(historicalFace&&editedResponseContent.includes("【现场动作】"))) {
                 showChatToast("群聊编辑内容需要保留 [角色名]: 前缀");
                 return;
             }
-            const segments = parseGroupChatResponse(editedResponseContent, nameToId);
+            const segments = parseGroupChatResponse(editedResponseContent, nameToId,historicalFace?{actions:true}:undefined);
             if (segments.length === 0) {
                 showChatToast("没有识别到可编辑的群聊成员前缀");
                 return;
@@ -4926,6 +4953,8 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
 
             const replacementMessages: Array<{
                 content: string;
+                faceToFaceMode?: true;
+                faceToFaceKind?: ChatMessage["faceToFaceKind"];
                 mediaType?: ChatMessage["mediaType"];
                 mediaData?: ChatMessage["mediaData"];
                 rawResponseText?: string;
@@ -4949,6 +4978,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             };
             for (const segment of segments) {
                 const responseBatchId = createResponseBatchId();
+                if(segment.characterId===FACE_SCENE_ID){replacementMessages.push({content:segment.responseText,faceToFaceMode:true,faceToFaceKind:"action",rawResponseText:segment.responseText,responseBatchId});continue;}
                 const groupText = applyGroupSelfNicknameTag(session, segment.characterId, segment.responseText);
                 const { parts: rawParts, stateValues, freshStateValues, statusPanel, innerMonologue } = parseAIResponse(groupText, getCurrentStateForCharacter(segment.characterId));
                 const parts = stripInvalidStickerParts(rawParts, segment.characterId);
@@ -4963,6 +4993,8 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                     const attachHere = !attachedState && canCarryFoldedPanel(part);
                     replacementMessages.push({
                         content: part.content,
+                        faceToFaceMode:historicalFace?true:undefined,
+                        faceToFaceKind:historicalFace?"speech":undefined,
                         mediaType: part.mediaType,
                         mediaData: part.mediaType === "quote" ? {...part.mediaData,...resolveGroupQuoteMetadata(part.mediaData?.quotePreview)} : part.mediaData,
                         rawResponseText: segment.responseText,
@@ -5052,7 +5084,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         const editedVisibleContent = session.isGroup && batchMessages[0]?.senderCharacterId
             ? applyGroupSelfNicknameTag(session, batchMessages[0].senderCharacterId, editedResponseContent)
             : editedResponseContent;
-        const { parts: rawParts, stateValues, freshStateValues, statusPanel, innerMonologue } = parseAIResponse(editedVisibleContent, previousState);
+        const { parts: rawParts, stateValues, freshStateValues, statusPanel, innerMonologue } = parseAIResponse(editedVisibleContent, previousState,batchMessages.some(m=>m.faceToFaceMode)?{actions:true}:undefined);
         const parts = stripInvalidStickerParts(rawParts);
         const normalizedParts = normalizeEditedAssistantParts(parts).filter(part => !session.isGroup || part.mediaType !== "gift");
         if (normalizedParts.length === 0 && (statusPanel || innerMonologue)) {
@@ -5258,7 +5290,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                     )}
                 </div>
                 <div className="flex">
-                    <button onClick={() => { setQuotingMessage(m); setActiveMessageId(null); }} className="ctx-menu-btn">引用</button>
+                    {canQuoteChatMessage(m) && <button onClick={() => { setQuotingMessage(m); setActiveMessageId(null); }} className="ctx-menu-btn">引用</button>}
                     {options?.allowMultiSelect !== false && (
                         <button onClick={() => startMultiSelectFromMessage(m)} className="ctx-menu-btn">多选</button>
                     )}
@@ -5448,6 +5480,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                 projected.push(...batch);
                 continue;
             }
+            if(batch.some(m=>m.faceToFaceMode)){projected.push(...batch);continue;}
             const parsed = parseAIResponse(displayRaw, []);
             const parts = normalizeDisplayParts(parsed.parts);
             // 面板投影到第一条能显示它的消息上（拍一拍/通话留痕是系统小字，没有面板入口）
@@ -6254,6 +6287,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                     const selectableStoredId = getSelectableStoredMessageId(msg);
                     const isMultiSelectable = isMultiSelectMode && !!selectableStoredId && !hiddenEmpty;
                     const isMultiSelected = !!selectableStoredId && selectedMessageIds.has(selectableStoredId);
+                    if(msg.faceToFaceKind==="action"&&!msg.isRetracted){return <div key={msg.id} data-chat-message-batch="">{showDay&&<KktDateDivider dateTime={msg.createdAt}/>}<div id={`message-${msg.id}`} className="chat-face-to-face-action" style={{color:session.faceToFaceActionColor||undefined,fontSize:`${Math.max(70,Math.min(150,session.faceToFaceActionSize??100))}%`}} onClick={()=>{if(isMultiSelectMode&&selectableStoredId)toggleMultiSelectedMessage(selectableStoredId);}} data-selected={isMultiSelected||undefined} onPointerDown={e=>handleMessagePointerDown(e,msg.id)} onPointerUp={handleMessagePointerUp} onPointerCancel={handleMessagePointerCancel} onPointerLeave={handleMessagePointerCancel} onContextMenu={e=>{e.preventDefault();openMessageContextMenu(msg.id,bubbleContextAnchor(e.currentTarget));}}>{faceActionText(msg.content)}</div></div>;}
                     const blacklistEvent = msg.mediaData?.blacklistEvent;
                     const isBlacklistEventExpanded = Boolean(blacklistEvent && expandedBlacklistEventIds.has(msg.id));
                     const multiSelectWrapperProps = isMultiSelectable ? {
@@ -6581,12 +6615,13 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                                 <div className="chat-msg-rejected-note">消息已发出，但被对方拒收了</div>
                             )}
 
+                            {!offlineMode && hasFoldedPanel && expandedMonologueId === msg.id && wrapperRef.current && createPortal(
+                                <ChatStateDialog container={wrapperRef.current} onClose={()=>setExpandedThinkingId(null)}>
                             {/* 状态栏：一律裸渲染，不套便利贴外框（自定义模式下交给用户的渲染代码，
                                 否则 [状态栏] 原文直接走 markdown/内联 HTML，让 AI 直出的卡片自己当外框）。
                                 状态值跟内心独白走（留在便利贴里）；这轮没有内心独白时便利贴不出现，
                                 数值裸放在状态栏上方。 */}
-                            {hasFoldedPanel && expandedMonologueId === msg.id
-                                && (renderMsg.statusPanel || (!renderMsg.innerMonologue && cardStateValues && cardStateValues.length > 0)) && (
+                            { (renderMsg.statusPanel || (!renderMsg.innerMonologue && cardStateValues && cardStateValues.length > 0)) && (
                                 <div className="chat-status-bare">
                                     {!renderMsg.innerMonologue && cardStateValues && cardStateValues.length > 0 && (
                                         <StateValuesPanel stateValues={cardStateValues} />
@@ -6601,7 +6636,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                                 </div>
                             )}
                             {/* Inner monologue card (sticky note / journal style) */}
-                            {hasFoldedPanel && expandedMonologueId === msg.id && renderMsg.innerMonologue && (
+                            {renderMsg.innerMonologue && (
                                 <div className="chat-thought-card">
                                     {/* Decorative washi tape */}
                                     <div className="chat-thought-tape-left" />
@@ -6623,6 +6658,8 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                                     </div>
                                 </div>
                             )}
+                                </ChatStateDialog>, wrapperRef.current)}
+
                         </div>
                     );
                 })}
@@ -6764,11 +6801,13 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
 	                isGenerating={isGenerating}
 	                theaterMode={theaterMode}
 	                enterToSendEnabled={enterToSendEnabled}
-	                quotingMessage={quotingMessage}
+	                quotingMessage={quotingMessage && canQuoteChatMessage(quotingMessage) ? quotingMessage : null}
                 showEmojiPanel={showEmojiPanel}
                 showStickerPanel={showStickerPanel}
                 showPlusMenu={showPlusMenu}
                 customPlusActions={customPlusActions}
+                faceToFaceEnabled={session.faceToFaceEnabled}
+                onToggleFaceToFace={session.isSpectator?undefined:()=>{if(isGenerating)return;const sessions=loadChatSessions();const latest=sessions.find(item=>item.id===session.id)??session;const next=!latest.faceToFaceEnabled;saveChatSessions(sessions.map(item=>item.id===session.id?{...item,faceToFaceEnabled:next}:item));session.faceToFaceEnabled=next;refreshFaceMode(value=>value+1);}}
                 onClearQuote={() => setQuotingMessage(null)}
                 onToggleOfflineMode={toggleOfflineMode}
                 onClosePanels={() => { setShowEmojiPanel(false); setShowStickerPanel(false); setShowPlusMenu(false); }}

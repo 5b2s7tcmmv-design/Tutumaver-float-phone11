@@ -4651,11 +4651,12 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets, initialL
                           const sid = call.sessionId;
                           kvSet("chat-generating:" + sid, JSON.stringify({ startedAt: Date.now() }));
                           const msgs = loadChatMessages(sid);
+                          const face = sess.faceToFaceEnabled && !sess.isGroup && !sess.isSpectator ? { actions: !!sess.faceToFaceActions } : undefined;
                           generateChatCompletion(sess, msgs, { appTags: ["chat", "text"] }).then(cr => { const text = flattenCompletionResult(cr);
-                            const { parts, stateValues } = parseAIResponse(text, []);
+                            const { parts, stateValues } = parseAIResponse(text, [], face);
                             for (const p of parts) {
                               if (p.mediaType === "voice_call" || p.mediaType === "video_call") continue;
-                              pushChatMessage({ sessionId: sid, role: "assistant", content: p.content, mediaType: p.mediaType, mediaData: p.mediaData });
+                              pushChatMessage({ sessionId: sid, role: "assistant", content: p.content, mediaType: p.mediaType, mediaData: p.mediaData, faceToFaceMode: face ? true : undefined, faceToFaceKind: face ? (p.faceToFaceAction ? "action" : "speech") : undefined });
                             }
                             scheduleFollowUp(sid, 0, stateValues);
                           }).catch(() => {}).finally(() => {
