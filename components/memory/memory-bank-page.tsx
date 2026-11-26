@@ -1,4 +1,6 @@
 "use client";
+import { summarizeWeverseLive } from "@/lib/live-world-sync";
+import { loadWeverseState } from "@/lib/weverse-storage";
 
 import { Component, useState, useEffect, useCallback, useMemo, type CSSProperties, type ReactNode } from "react";
 import { Trash2, Zap, Clock, Users, Archive, AlertCircle, Search, Brain, FileText, MoreHorizontal, Plus, Edit3, X, Check, ChevronRight, Filter, type LucideIcon } from "lucide-react";
@@ -740,6 +742,17 @@ export function MemoryBankPage({
         } catch (error) { showNotice(`提炼失败：${String(error)}`); }
         finally { setSummarizing(false); }
     };
+    const refreshWeverseMemory = async () => {
+        if (!selectedCharId || summarizing) return;
+        setSummarizing(true);
+        try {
+            const lives = loadWeverseState().lives.filter(l => !l.official && l.status === "ended" && (l.participantPresence.some(p => p.characterId === selectedCharId) || l.viewerPresence.some(p => p.characterId === selectedCharId)));
+            for (const live of lives) await summarizeWeverseLive(live.id, selectedCharId);
+            await loadDetailData(selectedCharId);
+            showNotice(lives.length ? "直播记忆已按实际互动与观看范围同步" : "暂无可同步的直播记忆");
+        } catch (error) { showNotice(`同步失败：${String(error)}`); }
+        finally { setSummarizing(false); }
+    };
     const renderSelectableTimeline = (events: NativeTimelineEntry[]) => selecting ? (
         <div className="flex flex-col gap-2">{events.filter(e => !activeTimelineTags.size || activeTimelineTags.has(getMemoryEventSourceTag(e))).map(e => {
             const key = timelineEntryKey(e);
@@ -760,6 +773,7 @@ export function MemoryBankPage({
                     {(activeTab === "short" || activeTab === "shared") && <div style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: "12px 0" }}>
                         <button className="ui-btn" onClick={() => { setSelecting(!selecting); if (selecting) setPickedEntries(new Set()); }} disabled={summarizing}>{selecting ? "取消选择" : "选择提炼"}</button>
                         {selecting && <button className="ui-btn ui-btn-primary" disabled={!pickedEntries.size || summarizing} onClick={prepareSelectedSummary}>{summarizing ? "提炼中…" : `提炼所选 ${pickedEntries.size} 条`}</button>}
+                        {!selecting && <button className="ui-btn" disabled={summarizing} onClick={refreshWeverseMemory}>{summarizing ? "同步中…" : "同步直播记忆"}</button>}
                     </div>}
                     <MemoryDetailBoundary>
                     {loading ? (
