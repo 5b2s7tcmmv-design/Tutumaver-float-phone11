@@ -146,7 +146,7 @@ function resolveRuntime(characterId: string): CoCreateRuntime {
   const apiConfig = loadApiConfigs().find((item) => item.id === slot.apiConfigId);
   if (!apiConfig) throw new ChatEngineError(`找不到 ${character.name} 的共创 API 配置。`);
 
-  const presets = loadPresets();
+  const presets = loadPresets(characterId);
   const preset = slot.presetId
     ? presets.find((item) => item.id === slot.presetId) || presets.find((item) => item.builtIn) || null
     : presets.find((item) => item.builtIn) || null;

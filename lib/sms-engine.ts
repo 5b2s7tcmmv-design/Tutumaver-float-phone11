@@ -25,7 +25,7 @@ export async function generateSmsReply(thread: SmsThread, state: SmsState, mode:
   const slot = resolveBinding(loadBindingConfig(), character.id, "sms");
   const api = loadApiConfigs().find(x => x.id === slot.apiConfigId) ?? loadApiConfigs()[0];
   if (!api) throw new Error("请先配置文字 API");
-  const presets = loadPresets();
+  const presets = loadPresets(character.id);
   const preset = presets.find(x => x.id === slot.presetId) ?? presets.find(x => x.builtIn) ?? null;
   const worldBooks = (slot.worldBookIds ?? []).map(id => loadWorldBooks().find(x => x.id === id)).filter(Boolean) as WorldBookConfig[];
   const regexes = (slot.regexIds ?? []).map(id => loadRegexes().find(x => x.id === id)).filter(Boolean) as RegexConfig[];
