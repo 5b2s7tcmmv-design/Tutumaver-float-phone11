@@ -1051,7 +1051,8 @@ export function loadCustomAppTimelineEntries(
   options?: { afterTimestamp?: string },
 ): CustomAppTimelineEntry[] {
   const installed = loadInstalledCustomApps();
-  const entries = installed.flatMap(app => loadCustomAppTimelineForApp(app.id));
+  const appIds = new Set(installed.map(app => app.id));
+  const entries = [...appIds].flatMap(id => loadCustomAppTimelineForApp(id));
   return entries
     .filter(entry => !characterId || entry.characterId === characterId)
     .filter(entry => !options?.afterTimestamp || entry.createdAt > options.afterTimestamp)
