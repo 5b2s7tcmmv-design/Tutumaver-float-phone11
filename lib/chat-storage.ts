@@ -286,6 +286,8 @@ export type ChatMessage = {
         xiaohongshuCoverIcon?: string;
         xiaohongshuTone?: string;
         callDuration?: string;    // 通话时长（如 05:23）
+        voiceTextExpanded?: boolean; // 本地语音原文展开状态，随消息删除
+        voiceTextEdited?: boolean; // 保留单条语音文字的手动修改，不被原始回复投影覆盖
         voiceDuration?: number;   // 语音条时长（秒）
         synthesizedFromText?: string; // 语音条当前音频对应的合成文本
         memoryContent?: string;   // 记忆写入内容
@@ -2325,30 +2327,23 @@ export async function persistMessageVoiceAudio(
     messageId: string,
     mediaUrl: string,
     synthesizedFromText: string,
+    voiceDuration?: number,
 ): Promise<void> {
+    // All hydrated messages are cached across sessions. Never recreate a deleted message.
+    const original = _messagesCache.find(m => m.id === messageId);
+    if (!original || original.mediaType !== "audio" || original.isRetracted) throw new Error("语音消息已不存在");
+    const withAudio = (m: ChatMessage): ChatMessage => ({
+        ...m, mediaUrl, mediaData: { ...m.mediaData, synthesizedFromText, voiceDuration },
+    });
+    // Await the actual write before replacing the old audio in memory.
+    const next = withAudio(original);
+    await chatDb.messages.put(next);
     const idx = _messagesCache.findIndex(m => m.id === messageId);
-    if (idx !== -1) {
-        const next = {
-            ..._messagesCache[idx],
-            mediaUrl,
-            mediaData: { ..._messagesCache[idx].mediaData, synthesizedFromText },
-        };
-        _messagesCache[idx] = next;
-        dbPutMessage(next);
-        return;
-    }
-    try {
-        const stored = await chatDb.messages.get(messageId);
-        if (stored) {
-            await chatDb.messages.put({
-                ...stored,
-                mediaUrl,
-                mediaData: { ...stored.mediaData, synthesizedFromText },
-            });
-        }
-    } catch (err) {
-        console.warn("[ChatDB] persist voice audio failed:", err);
-    }
+    if (idx < 0 || _messagesCache[idx].isRetracted || _messagesCache[idx].mediaType !== "audio") throw new Error("语音消息已不存在");
+    const current = _messagesCache[idx];
+    const merged = current === original ? next : withAudio(current);
+    if (current !== original) dbPutMessage(merged);
+    _messagesCache[idx] = merged;
 }
 
 export function updateChatMessage(

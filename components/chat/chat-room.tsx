@@ -36,7 +36,7 @@ import { parseAIResponse, type ParsedMessagePart } from "@/lib/rich-message-pars
 import { isKnownStickerLabel, findStickerByName } from "@/lib/sticker-data";
 import { findCustomStickerByName } from "@/lib/custom-sticker-storage";
 import { translateReasoningText } from "@/lib/reasoning-translate";
-import { MessageBubble, MediaDetailModal, prewarmStickerCache, BilingualTextBlock, isStandaloneHtmlPreviewContent, normalizeTextBubbleContent } from "./message-bubble";
+import { MessageBubble, MediaDetailModal, prewarmStickerCache, BilingualTextBlock, isStandaloneHtmlPreviewContent, normalizeTextBubbleContent, regenerateChatVoice } from "./message-bubble";
 import { GeneratedImageErrorDialog } from "./generated-image-error-dialog";
 import { PhotoInputModal, TextPhotoModal, VoiceRecordModal, RedPacketModal, LocationInputModal, SystemInstructionModal } from "./rich-input-modals";
 import { EmojiPanel, StickerPanel } from "./emoji-panel";
@@ -1511,7 +1511,6 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             setReasoningTranslating(false);
         }
     };
-    const [voiceTextIds, setVoiceTextIds] = useState<Set<string>>(new Set());
     const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
     const [editingContent, setEditingContent] = useState("");
     const [editingResponseBatchId, setEditingResponseBatchId] = useState<string | null>(null);
@@ -4832,7 +4831,8 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         if (originalMessage?.mediaType === "audio") {
             // 语音条的显示文字和 AI 上下文都读 mediaData.label，改 content 不生效；
             // synthesizedFromText 保留旧值，AI 语音会因文字不一致自动重新合成
-            const nextMediaData = { ...originalMessage.mediaData, label: nextContent };
+            const latest = loadChatMessages(session.id).find(m => m.id === editingMessageId) || originalMessage;
+            const nextMediaData = { ...latest.mediaData, label: nextContent, voiceTextEdited: true };
             updateMessageMediaData(editingMessageId, nextMediaData);
             setMessages(prev => prev.map(m => m.id === editingMessageId ? { ...m, mediaData: nextMediaData } : m));
         } else {
@@ -5288,8 +5288,10 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                         {m.role === "assistant" && (m.rawResponseText || m.editableResponseText) ? "编辑回复" : "编辑"}
                     </button>
                     {m.mediaType === "audio" && <button className="ctx-menu-btn" onClick={()=>{const text=originalCallSpeech(m.mediaData?.label || m.content);setFavoriteVoice({kind:"message",sourceKey:`${session.id}:${storedMessageId}`,text,characterId:m.senderCharacterId || session.contactId,role:m.role === "user"?"user":"assistant",getAudio:()=>existingVoiceBlob(m.mediaData?.synthesizedFromText && m.mediaData.synthesizedFromText!==text ? undefined : m.mediaUrl)});setActiveMessageId(null);}}>收藏语音</button>}
+                    {m.role === "assistant" && m.mediaType === "audio" && <button className="ctx-menu-btn" onClick={async()=>{setActiveMessageId(null);const stored=loadChatMessages(session.id).find(row=>row.id===storedMessageId);if(!stored)return;showChatToast("正在重新合成…");try{await regenerateChatVoice(stored,stored.senderCharacterId||session.contactId);const latest=loadChatMessages(session.id).find(row=>row.id===storedMessageId);if(latest){setMessages(prev=>prev.map(row=>row.id===storedMessageId?latest:row));showChatToast(latest.mediaData?.label===stored.mediaData?.label?"重新合成成功":"文字已修改，请按需重新合成");}}catch(error){showChatToast(`重新合成失败：${error instanceof Error?error.message:"请重试"}`);}}}>重新合成</button>}
+                    {m.role === "assistant" && m.mediaType === "audio" && <button className="ctx-menu-btn" onClick={()=>{const stored=loadChatMessages(session.id).find(row=>row.id===storedMessageId);if(stored)handleEditMessageStart(stored);}}>编辑文字</button>}
                     {m.mediaType === "audio" && m.mediaData?.label && (
-                        <button onClick={() => { setVoiceTextIds(prev => { const next = new Set(prev); if (next.has(m.id)) next.delete(m.id); else next.add(m.id); return next; }); setActiveMessageId(null); }} className="ctx-menu-btn">转文字</button>
+                        <button onClick={() => { const stored = loadChatMessages(session.id).find(row => row.id === storedMessageId); if (stored?.mediaType === "audio") { const mediaData = { ...stored.mediaData, voiceTextExpanded: !stored.mediaData?.voiceTextExpanded }; updateMessageMediaData(storedMessageId, mediaData); setMessages(prev => prev.map(row => row.id === storedMessageId ? { ...row, mediaData } : row)); } setActiveMessageId(null); }} className="ctx-menu-btn">转文字</button>
                     )}
                     {m.role === "user" && (
                         <button onClick={() => handleRetractMessage(storedMessageId)} className="ctx-menu-btn">撤回消息</button>
@@ -5518,7 +5520,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                 // 直接用重解析结果整体替换会把它们丢掉，导致气泡永远判定"待重合成"而点不响。
                 // 双方都是语音条时按存储值打底、重解析字段覆盖。
                 const mediaData = part.mediaType === "audio" && base.mediaType === "audio" && base.mediaData
-                    ? { ...base.mediaData, ...part.mediaData }
+                    ? { ...base.mediaData, ...part.mediaData, ...(base.mediaData.voiceTextEdited ? { label: base.mediaData.label } : {}) }
                     : part.mediaData;
                 projected.push({
                     ...base,
@@ -6568,7 +6570,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                                         </div>
                                         {msg.role === "assistant" && !inlineKktMeta && batchMeta}
                                         </div>
-                                        {renderMsg.mediaType === "audio" && voiceTextIds.has(msg.id) && renderMsg.mediaData?.label && (
+                                        {renderMsg.mediaType === "audio" && renderMsg.mediaData?.voiceTextExpanded === true && renderMsg.mediaData?.label && (
                                     <div className="voice-msg-text-bubble">
                                         <BilingualTextBlock
                                             text={msg.displayProjected ? (renderMsg.mediaData?.label || "") : renderDisplayText(renderMsg.mediaData?.label || "", msg.role === "user" ? 1 : 2, false)}
@@ -7209,7 +7211,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                     >
                         <div className="flex items-center justify-between gap-3">
                             <div className="flex flex-col gap-1">
-                                <span className="menu-label">{editingSystemInstruction ? "编辑系统指令" : editingPhotoDescription ? "编辑照片描述" : "编辑消息"}</span>
+                                <span className="menu-label">{editingSystemInstruction ? "编辑系统指令" : editingPhotoDescription ? "编辑照片描述" : editingMessage?.mediaType === "audio" ? "编辑语音文字" : "编辑消息"}</span>
                                 <span className="menu-desc !mt-0">{editingSystemInstruction ? "保存后会按当前位置更新后续上下文" : "保存后会同步更新聊天记录和后续上下文"}</span>
                             </div>
                             <button
