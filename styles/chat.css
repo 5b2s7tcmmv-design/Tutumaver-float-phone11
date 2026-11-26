@@ -8721,3 +8721,11 @@
 .chat-vc-group-border .chat-folded-call-row:has(.chat-folded-call-action) .chat-folded-call-content { width:100%; max-width:95%; align-items:center; }
 .chat-vc-group-border .chat-folded-call-action { width:100%; text-align:center; font-style:italic; font-size:calc(12px * var(--app-text-scale,1)); line-height:1.65; color:var(--c-icon,#777); white-space:pre-wrap; overflow-wrap:anywhere; background:none; border:0; box-shadow:none; }
 .chat-app[data-chat-theme="dark"] .chat-vc-group-border .chat-folded-call-action {color:#bcbcbc;}
+
+/* Keep expanded photo controls on the same sender-relative side as the folded deck. */
+.chat-photo-deck-expanded{display:flex;flex-direction:row;align-items:center;gap:7px;max-width:100%;min-width:0}
+.chat-photo-deck-expanded--mine{flex-direction:row-reverse}
+.chat-photo-deck-expanded .chat-photo-deck-grid{flex:0 1 auto;min-width:0;max-width:min(74vw,250px)}
+.chat-photo-deck-expanded .chat-photo-deck-item{max-width:100%}
+.chat-photo-deck-expanded .chat-photo-deck-item .chat-photo-card-image{max-width:100%}
+.chat-photo-deck-expanded>.chat-photo-deck-toggle{align-self:center;flex:0 0 auto;margin:0}
