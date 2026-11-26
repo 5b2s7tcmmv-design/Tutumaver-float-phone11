@@ -1,12 +1,16 @@
 "use client";
-import {openSharedChatSession} from "@/lib/chat-notification-events";
+import { GroupShareTargets } from "@/components/chat/group-share-targets";
+
+import { openSharedChatSession } from '@/lib/chat-notification-events';
+import { resolveChatShareSession } from '@/lib/chat-share-targets';
+
 import {useSnapshotNavigation} from "@/lib/shared-snapshot-navigation";
 import { AppNotificationSetting, useSocialNotices } from "@/components/social/app-notifications";
 import { readSocialTarget } from "@/lib/social-notifications";
 
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Check, ChevronDown, ChevronRight, Clock3, Plus, RefreshCw, Send, Settings2, Share2, Trash2, X } from "lucide-react";
-import { createOrGetSession, pushChatMessage } from "@/lib/chat-storage";
+import { pushChatMessage } from "@/lib/chat-storage";
 import type { QuestionBoxSnapshot } from "@/lib/question-box-chat";
 import { loadCharacters } from "@/lib/character-storage";
 import { generateBoxAnswers, generateBoxQuestions, generateBoxTopic, translateBoxUserAnswer } from "@/lib/question-box-engine";
@@ -185,7 +189,7 @@ export function QuestionBoxApp({ onClose, onNotice }: { onClose: () => void; onN
   };
   const shareTo = (characterId: string) => {
     if (!share) return;
-    const session = createOrGetSession(characterId);
+    const session = resolveChatShareSession(characterId);
     const answer = share.answer;
     const context = [
       "[提问箱分享快照 · 以下为卡片资料]",
@@ -204,7 +208,7 @@ export function QuestionBoxApp({ onClose, onNotice }: { onClose: () => void; onN
     setShare(null);
     openSharedChatSession(session.id);
   };
-  const questionCard = (row: BoxQuestion) => <article key={row.id} className={styles.questionCard}>
+  const questionCard = (row: BoxQuestion) => <article key={row.id} id={"question-"+row.id} className={styles.questionCard}>
     <div className={styles.questionTop}><span>匿名提问</span><span>{at(row.createdAt)}</span></div>
     <strong>{row.text}</strong>
     {row.answer && <div className={styles.inlineAnswer}><span>{display(box!.ownerId, !boxOpen, box!)}的回答</span><p>{row.answer.original}</p>{row.answer.translated !== row.answer.original && <p className={styles.translation}>{row.answer.translated}</p>}</div>}
@@ -252,7 +256,7 @@ export function QuestionBoxApp({ onClose, onNotice }: { onClose: () => void; onN
         <button className={styles.refreshChoice} onClick={() => void refresh("answers")}><span className={styles.refreshIcon}><Check size={17}/></span><span className={styles.refreshText}><strong>看新回答</strong><small>只看看 C 回了哪些旧问题</small></span><ChevronRight size={16}/></button>
         <button className={styles.refreshChoice} onClick={() => void refresh("both")}><span className={styles.refreshIcon}><RefreshCw size={16}/></span><span className={styles.refreshText}><strong>同时刷新</strong><small>收新问题，也查看已有问题的回答</small></span><ChevronRight size={16}/></button>
       </div></>}
-      {modal === "share" && (characters.length ? <div className={styles.characterGrid}>{characters.map(c => <button key={c.id} onClick={() => shareTo(c.id)}><span>{c.avatar ? <img src={c.avatar} alt=""/> : c.name.slice(0, 1)}</span>{c.name}</button>)}</div> : <p className={styles.hint}>还没有可以分享的角色。</p>)}
+      {modal === "share" && <GroupShareTargets onSelect={shareTo}/>}{modal === "share" && (characters.length ? <div className={styles.characterGrid}>{characters.map(c => <button key={c.id} onClick={() => shareTo(c.id)}><span>{c.avatar ? <img src={c.avatar} alt=""/> : c.name.slice(0, 1)}</span>{c.name}</button>)}</div> : <p className={styles.hint}>还没有可以分享的角色。</p>)}
       {modal === "participants" && <><p className={styles.hint}>默认每次从引入的 C 中随机抽一部分提问，也可能有陌生人。指定后只有勾选的 C 和陌生人参与。</p><button className={styles.choiceRow} onClick={() => setParticipants(undefined)}><span>随机抽取 C</span>{!participants && <Check size={16}/>}</button><div className={styles.characterGrid}>{characters.map(c => <button key={c.id} className={participants?.includes(c.id) ? styles.characterSelected : ""} onClick={() => setParticipants(prev => prev?.includes(c.id) ? prev.filter(id => id !== c.id) : [...(prev || []), c.id])}>{state.profiles[c.id]?.nickname || c.name}{participants?.includes(c.id) && <Check size={13}/>}</button>)}</div><button className={styles.primary} onClick={updateParticipants}>保存本期设置</button></>}
     </section></div>}
 
