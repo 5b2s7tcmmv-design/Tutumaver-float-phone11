@@ -205,7 +205,7 @@ export function TheqooApp({ onClose, onNotice: externalNotice, visible = true, o
         ],
       }));
       setCategory("전체");
-      onNotice?.(processPending ? `已随机刷新 ${rows.length} 条帖子${followupsFailed ? "；旧帖的后续讨论生成失败，下次刷新还会尝试。" : "，待回复评论已处理。"}` : `已按关键词生成 ${rows.length} 条帖子。`);
+      onNotice?.(processPending ? `已随机刷新 ${rows.length} 条帖子${followupsFailed ? "；旧帖的后续讨论生成失败，下次刷新还会尝试。" : "。"}` : `已按关键词生成 ${rows.length} 条帖子。`);
     } catch (error) {
       onNotice?.(error instanceof Error ? `操作失败：${error.message}` : "刷新失败，请重试。");
     } finally {
@@ -227,13 +227,13 @@ export function TheqooApp({ onClose, onNotice: externalNotice, visible = true, o
 
   const loadMoreComments = async () => {
     const post = selected;
-    if (!post || (!post.comments.length && !post.authoredByUser) || busyRef.current || moreBusyRef.current || post.comments.some(c => c.authoredByUser && c.pendingRefresh)) return;
+    if (!post || (!post.comments.length && !post.authoredByUser) || busyRef.current || moreBusyRef.current) return;
     moreBusyRef.current = true;
     setMoreCommentsPostId(post.id);
     try {
       const extra = await generateTheqooMoreComments(post, state.worldBookIds, state.translationEnabled, state.forumLanguage);
       setState(s => ({ ...s, posts: s.posts.map(item => item.id === post.id
-        ? { ...item, comments: [...item.comments, ...extra] } : item) }));
+        ? { ...item, comments: [...item.comments.map(c => c.pendingRefresh && post.comments.some(old => old.id === c.id && old.pendingRefresh) ? {...c, pendingRefresh: false} : c), ...extra] } : item) }));
       onNotice(extra.length ? `已加载 ${extra.length} 条新评论` : "本次没有新的评论");
     } catch (error) {
       onNotice?.(error instanceof Error ? `操作失败：${error.message}` : "评论加载失败，请重试。");
@@ -534,13 +534,11 @@ export function TheqooApp({ onClose, onNotice: externalNotice, visible = true, o
         {(selected.comments.length > 0 || selected.authoredByUser) && <button
           type="button"
           className={styles.loadMoreComments}
-          disabled={busy || moreCommentsPostId !== null || selected.comments.some(c => c.authoredByUser && c.pendingRefresh)}
+          disabled={busy || moreCommentsPostId !== null}
           onClick={() => void loadMoreComments()}
         >{moreCommentsPostId === selected.id
           ? t("댓글 불러오는 중…", "正在加载评论…")
-          : selected.comments.some(c => c.authoredByUser && c.pendingRefresh)
-            ? t("다음 새로고침 후 더 보기", "下次刷新后可查看更多")
-            : t("댓글 더 보기", "查看更多评论")}</button>}
+          : t("댓글 더 보기", "查看更多评论")}</button>}
       </main>
       <form className={styles.commentComposer} onSubmit={sendComment}>
         <input value={commentText} onChange={e => setCommentText(e.target.value)} placeholder={state.translationEnabled ? t("댓글을 입력하세요…", "写下评论…中文或韩文都可以") : t("중국어로 댓글을 입력하세요…", "写下评论…关闭翻译时请直接输入中文")} />

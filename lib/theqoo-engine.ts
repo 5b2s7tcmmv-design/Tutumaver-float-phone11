@@ -294,8 +294,8 @@ export async function generateTheqooMoreComments(
     ? `{"comments":[{"original":"韩文","translated":"中文","isOP":false}]}`
     : `{"comments":[{"text":"中文","isOP":false}]}`;
   const raw = await sendLLMRequest(config, null, [
-    { role: "system", content: theqooLanguagePrompt(`继续生成韩国匿名论坛帖下方此前尚未显示的评论。只参考选中的世界书：${world || "无"}。帖子分类：${post.category}。${opPolicy}内容风格：${loadTheqooPrompt()}。恰好续写 10 条不同的匿名评论，不要复述已有评论，不要替用户发言，也不要把用户尚待下一次首页刷新的评论当成已被网友看到。${noOP ? "不能生成楼主回复，isOP 全部为 false。" : "可以自然出现原楼主补充，但不强制。"}${languageRule}只输出 JSON：${schema}。` , language, translationEnabled) },
-    { role: "user", content: JSON.stringify({ title: translationEnabled ? post.titleOriginal : post.titleTranslated || post.titleOriginal, body: translationEnabled ? post.bodyOriginal : post.bodyTranslated || post.bodyOriginal, recentComments: post.comments.filter(c => !c.pendingRefresh).slice(-22).map(c => ({ text: translationEnabled ? c.original : c.translated || c.original, isOP: post.authoredByUser ? c.authoredByUser === true : c.authoredByOP === true })) }) },
+    { role: "system", content: theqooLanguagePrompt(`继续生成韩国匿名论坛帖下方此前尚未显示的评论。只参考选中的世界书：${world || "无"}。帖子分类：${post.category}。${opPolicy}内容风格：${loadTheqooPrompt()}。恰好续写 10 条不同的匿名评论，不要复述已有评论，不要替用户发言，也用户评论是普通网友发言，可以回应也可以忽略；如果是用户自己的帖子，用户追评就是楼主补充，更容易被注意，但不保证回复。${noOP ? "不能生成楼主回复，isOP 全部为 false。" : "可以自然出现原楼主补充，但不强制。"}${languageRule}只输出 JSON：${schema}。` , language, translationEnabled) },
+    { role: "user", content: JSON.stringify({ title: translationEnabled ? post.titleOriginal : post.titleTranslated || post.titleOriginal, body: translationEnabled ? post.bodyOriginal : post.bodyTranslated || post.bodyOriginal, recentComments: post.comments.slice(-22).map(c => ({ text: translationEnabled ? c.original : c.translated || c.original, isOP: post.authoredByUser ? c.authoredByUser === true : c.authoredByOP === true })) }) },
   ], [], undefined, { appId: "theqoo", appTags: ["theqoo", "comments"], skipOutputRegex: true });
   const start = raw.indexOf("{"), end = raw.lastIndexOf("}");
   if (start < 0 || end <= start) throw new Error("评论生成失败，请重试。");
@@ -344,7 +344,7 @@ export async function generateTheqooCommentFollowups(
   const raw = await sendLLMRequest(config, null, [
     {
       role: "system",
-      content: `你在模拟匿名论坛下一次“刷新页面”后自然出现的评论增量。只允许使用用户为论坛选择的世界书：${world || "无"}。每个输入帖子这一次必须新增 5 到 8 条匿名网友评论，数量随机，不要每帖固定相同。新增评论可以回应用户刚刚留下的 pending 评论，也可以继续原帖其他争论，不要让所有人都机械回复用户同一句。用户发表评论后不是即时得到回复，而是到了这次刷新才可能被看到。所有评论区都允许吐槽、反驳、冷嘲、阴阳、跑题和小规模吵架，也允许没人站用户这边。${opPolicy}内容风格：${loadTheqooPrompt()}。 如果 authoredByUser:true，原楼主就是用户本人，绝对不能替用户生成任何 isOP:true 的楼主发言；只有 AI 原帖且分类不是 뉴스/정보 时，AI 才可以让原楼主自然回来补充。${languageRule} 每个帖子必须沿用输入 language 指定的语言：ja 的 original 用日语、中文保留日语语感，ko 用韩语；zh 用中文且 original/text 与 translated 一致。不要因本次界面切换改写旧帖语言。只输出 JSON：${schema}`,
+      content: `你在模拟匿名论坛下一次“刷新页面”后自然出现的评论增量。只允许使用用户为论坛选择的世界书：${world || "无"}。首页刷新以新帖为主；每个旧帖可选择不新增评论，或者自然新增 1 到 8 条匿名网友评论，不必每帖都有后续。新增评论可以回应用户刚刚留下的 pending 评论，也可以继续原帖其他争论，不要让所有人都机械回复用户同一句。用户在别人的帖子下只是普通网友，可以完全无人回应，楼主也不必回应。用户在自己帖子下的追评是楼主补充，更容易受到关注，但不保证回应。所有评论区都允许吐槽、反驳、冷嘲、阴阳、跑题和小规模吵架，也允许没人站用户这边。${opPolicy}内容风格：${loadTheqooPrompt()}。 如果 authoredByUser:true，原楼主就是用户本人，绝对不能替用户生成任何 isOP:true 的楼主发言；只有 AI 原帖且分类不是 뉴스/정보 时，AI 才可以让原楼主自然回来补充。${languageRule} 每个帖子必须沿用输入 language 指定的语言：ja 的 original 用日语、中文保留日语语感，ko 用韩语；zh 用中文且 original/text 与 translated 一致。不要因本次界面切换改写旧帖语言。只输出 JSON：${schema}`,
     },
     { role: "user", content: JSON.stringify(input) },
   ], [], undefined, { appId: "theqoo", appTags: ["theqoo", "comments"], skipOutputRegex: true });
@@ -380,10 +380,10 @@ export async function generateTheqooCommentFollowups(
         authoredByOP: !noOP && row.isOP === true,
       }];
     }) : [];
-    if (comments.length < 5) continue;
+    if (!Array.isArray(thread.comments)) continue;
     result[id] = comments;
   }
 
-  // 只有成功生成 5~8 条的帖子才视为本轮已处理；其余 pending 会保留到下次刷新。
+  // 显式返回空评论也视为本轮已评估；未返回的帖子下次可重试。
   return result;
 }

@@ -258,7 +258,7 @@ const RICH_PATTERNS: {
         },
     },
     {
-        regex: new RegExp(`\\[引用${C}([^\\]]+)\\](.+)`),
+        regex: new RegExp(`\\[引用${C}((?:\\[语音\\])?[^\\]]*)\\](.+)`),
         build: (m) => ({
             content: m[2].trim(),
             mediaType: "quote" as const,
@@ -771,7 +771,7 @@ export function parseAIResponse(rawText: string, previousState: StateValue[]): P
     const postCleaned = mono.cleaned.replace(/\n{3,}/g, "\n\n").trim();
 
     // 2.5. Merge [引用:...] with following reply text even if separated by newlines
-    const mergedText = postCleaned.replace(/(\[引用[：:][^\]]+\])\s*\n+\s*/g, "$1");
+    const mergedText = postCleaned.replace(/(\[引用[：:](?:\[语音\])?[^\]]*\])\s*\n+\s*/g, "$1");
 
     // 2.6. Collapse blank lines around [表情包:...] so stickers stay in the same segment as adjacent text
     const stickerMerged = mergedText
