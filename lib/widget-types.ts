@@ -137,5 +137,28 @@ export const WIDGET_CATALOG: WidgetCatalogEntry[] = [
   { type: "profileCard", name: "自由 · 主页名片", desc: "背景图+白卡+悬浮头像的资料名片", size: "4x4", track: "freestyle" },
 ];
 
-export const GRID_ROWS = 6;
-export const GRID_COLS = 4;
+export type DesktopGridConfig = { rows: number; cols: number; hideLabels: boolean };
+export function normalizeDesktopGrid(raw: unknown): DesktopGridConfig {
+  const value = raw && typeof raw === "object" ? raw as Partial<DesktopGridConfig> : {};
+  const bound = (n: unknown, fallback: number, min: number, max: number) =>
+    typeof n === "number" && Number.isFinite(n) ? Math.max(min, Math.min(max, Math.round(n))) : fallback;
+  return { rows: bound(value.rows, 6, 4, 7), cols: bound(value.cols, 4, 3, 5), hideLabels: value.hideLabels === true };
+}
+export let GRID_ROWS = 6;
+export let GRID_COLS = 4;
+export function setDesktopGridDimensions(raw: unknown): DesktopGridConfig {
+  const grid = normalizeDesktopGrid(raw);
+  GRID_ROWS = grid.rows;
+  GRID_COLS = grid.cols;
+  return grid;
+}
+export function fitDesktopGridToWidgets(raw: unknown, widgets: WidgetInstance[]): DesktopGridConfig {
+  const grid = normalizeDesktopGrid(raw);
+  for (const widget of widgets) {
+    const size = WIDGET_SIZE_CELLS[widget.size];
+    if (!size) continue;
+    grid.rows = Math.max(grid.rows, size[0]);
+    grid.cols = Math.max(grid.cols, size[1]);
+  }
+  return grid;
+}

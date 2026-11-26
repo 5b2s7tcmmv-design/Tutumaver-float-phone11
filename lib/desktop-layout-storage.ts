@@ -1,7 +1,8 @@
+import { reflowDesktopGrid } from "./desktop-grid-layout";
 import { DOCK_DEFAULT, ICONS, PAGE_1_DEFAULT, PAGE_2_DEFAULT, PAGE_3_DEFAULT, type DesktopIconId, type IconId, type IconPosition } from "@/lib/desktop-config";
 import { isCustomAppIconId } from "@/lib/custom-app-types";
 import { loadInstalledCustomApps } from "@/lib/custom-app-storage";
-import { GRID_COLS, GRID_ROWS, WIDGET_SIZE_CELLS, type WidgetInstance } from "@/lib/widget-types";
+import { GRID_COLS, GRID_ROWS, WIDGET_SIZE_CELLS, normalizeDesktopGrid, type DesktopGridConfig, type WidgetInstance } from "@/lib/widget-types";
 import { kvGet, kvSet, registerKvMigration } from "./kv-db";
 
 export const ICON_LAYOUT_STORAGE_KEY = "ai_phone_icon_layout_v2";
@@ -117,7 +118,6 @@ function normalizePage(raw: unknown, folderIds?: Set<string>): IconPosition[] {
   const knownIcons = new Set<string>(Object.keys(ICONS));
   const customIconIds = getInstalledCustomIconIds();
   const seenIds = new Set<DesktopIconId>();
-  const seenCells = new Set<string>();
   const result: IconPosition[] = [];
 
   for (const item of raw) {
@@ -136,30 +136,28 @@ function normalizePage(raw: unknown, folderIds?: Set<string>): IconPosition[] {
       !migratedId
       || (!knownIcons.has(migratedId) && !customIconIds.has(migratedId) && !folderIds?.has(migratedId))
       || row < 1
-      || row > GRID_ROWS
+      || !Number.isInteger(row)
       || col < 1
-      || col > GRID_COLS
+      || !Number.isInteger(col)
     ) {
       continue;
     }
 
     const iconId = migratedId;
-    const cellKey = `${row},${col}`;
-    if (seenIds.has(iconId) || seenCells.has(cellKey)) {
+    if (seenIds.has(iconId)) {
       continue;
     }
 
     seenIds.add(iconId);
-    seenCells.add(cellKey);
     result.push({ id: iconId, row, col });
   }
 
   return result;
 }
 
-export function normalizeDesktopIconLayout(raw: unknown, folderIds?: Set<string>): DesktopIconLayout {
+export function normalizeDesktopIconLayout(raw: unknown, folderIds?: Set<string>, grid: DesktopGridConfig = normalizeDesktopGrid({ rows: GRID_ROWS, cols: GRID_COLS })): DesktopIconLayout {
   if (!raw || typeof raw !== "object") {
-    return createDefaultDesktopIconLayout();
+    return reflowDesktopGrid(createDefaultDesktopIconLayout(), [], grid).layout;
   }
 
   const candidate = raw as Record<string, unknown>;
@@ -167,7 +165,7 @@ export function normalizeDesktopIconLayout(raw: unknown, folderIds?: Set<string>
   for (const pageKey of getDesktopPageKeys(candidate)) {
     normalized[pageKey] = normalizePage(candidate[pageKey], folderIds);
   }
-  return normalized;
+  return reflowDesktopGrid(normalized, [], grid).layout;
 }
 
 export function writeDesktopIconLayout(layout: DesktopIconLayout, folderIds?: Set<string>): DesktopIconLayout {

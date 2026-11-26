@@ -1,3 +1,5 @@
+import { reflowDesktopGrid } from "./desktop-grid-layout";
+import { fitDesktopGridToWidgets, setDesktopGridDimensions } from "./widget-types";
 import { DOCK_DEFAULT, type DesktopIconId, type IconPosition } from "@/lib/desktop-config";
 import {
   appendMissingCustomAppIcons,
@@ -177,12 +179,11 @@ function normalizeWidgets(raw: unknown): WidgetInstance[] {
       return [];
     }
 
-    const [rows, cols] = WIDGET_SIZE_CELLS[size];
     if (
       candidate.row < 1 ||
       candidate.col < 1 ||
-      candidate.row + rows - 1 > GRID_ROWS ||
-      candidate.col + cols - 1 > GRID_COLS
+      !Number.isInteger(candidate.row) ||
+      !Number.isInteger(candidate.col)
     ) {
       return [];
     }
@@ -287,11 +288,13 @@ function normalizeManifest(raw: unknown): ThemePackageManifest {
   // 文件夹先归一（成员按本机已装过滤），布局归一时放行它们的 tile——
   // 否则 folder tile 会被当成不认识的图标丢掉，整夹内容随之蒸发
   const folders = desktop.folders !== undefined ? normalizeDesktopFolders(desktop.folders) : undefined;
-  const iconLayout = normalizeDesktopIconLayout(desktop.iconLayout, folders ? new Set(Object.keys(folders)) : undefined);
   const dock = desktop.dock !== undefined ? normalizeDock(desktop.dock) : undefined;
-  const widgets = normalizeWidgets(desktop.widgets);
   const diyTemplates = normalizeDIYTemplates(desktop.diyTemplates);
   const themeProfile = normalizeThemeProfile(candidate.themeProfile);
+  const rawWidgets = normalizeWidgets(desktop.widgets);
+  const grid = fitDesktopGridToWidgets(themeProfile.desktopGrid, rawWidgets);
+  themeProfile.desktopGrid = grid;
+  const { layout: iconLayout, widgets } = reflowDesktopGrid(normalizeDesktopIconLayout(desktop.iconLayout, folders ? new Set(Object.keys(folders)) : undefined, grid), rawWidgets, grid);
 
   return {
     schema: PACKAGE_SCHEMA,
@@ -413,14 +416,17 @@ export async function createThemePackageBlob(input: CreateThemePackageInput): Pr
   // dock 与文件夹随包走：布局里的 folder tile 要靠文件夹表才放得行，
   // 不带的话导出即丢（tile 被归一化过滤、成员没处可查）
   const exportFolders = loadDesktopFolders();
+  const grid = fitDesktopGridToWidgets(themeProfile.desktopGrid, input.widgets);
+  themeProfile.desktopGrid = grid;
+  const packed = reflowDesktopGrid(normalizeDesktopIconLayout(input.iconLayout, new Set(Object.keys(exportFolders)), grid), normalizeWidgets(input.widgets), grid);
   const manifest: ThemePackageManifest = {
     schema: PACKAGE_SCHEMA,
     version: PACKAGE_VERSION,
     exportedAt: new Date().toISOString(),
     themeProfile,
     desktop: {
-      iconLayout: normalizeDesktopIconLayout(input.iconLayout, new Set(Object.keys(exportFolders))),
-      widgets: normalizeWidgets(input.widgets),
+      iconLayout: packed.layout,
+      widgets: packed.widgets,
       diyTemplates,
       dock: loadDockLayout(),
       folders: exportFolders
@@ -475,6 +481,7 @@ export async function installThemePackageFile(file: File): Promise<InstalledThem
 
   await writeThemeAssetRecords(records);
   const themeProfile = writeThemeProfile(manifest.themeProfile);
+  setDesktopGridDimensions(themeProfile.desktopGrid);
   saveDIYTemplates(manifest.desktop.diyTemplates);
   saveWidgets(manifest.desktop.widgets);
   // 主题包布局不含本机安装的自定义 app 图标，补回空位，避免导入后 app 从桌面消失
@@ -509,6 +516,7 @@ export async function resetThemePackageState(): Promise<InstalledThemePackage> {
     wallpaperAssetId: null,
     wallpaperLibrary: previousProfile.wallpaperLibrary
   });
+  setDesktopGridDimensions(themeProfile.desktopGrid);
   const widgets = createDefaultWidgets();
   // dock 一并恢复出厂，否则被拖出 dock 的默认图标（如设置）会在重置后彻底丢失
   const dock = writeDockLayout([...DOCK_DEFAULT]);

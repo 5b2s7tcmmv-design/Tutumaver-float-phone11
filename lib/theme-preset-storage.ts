@@ -1,3 +1,5 @@
+import { reflowDesktopGrid } from "./desktop-grid-layout";
+import { fitDesktopGridToWidgets } from "./widget-types";
 import type { DesktopIconId } from "@/lib/desktop-config";
 import {
   loadDesktopFolders,
@@ -69,12 +71,11 @@ function normalizePresetWidgets(raw: unknown): WidgetInstance[] {
       return [];
     }
 
-    const [rows, cols] = WIDGET_SIZE_CELLS[size];
     if (
       candidate.row < 1
       || candidate.col < 1
-      || candidate.row + rows - 1 > GRID_ROWS
-      || candidate.col + cols - 1 > GRID_COLS
+      || !Number.isInteger(candidate.row)
+      || !Number.isInteger(candidate.col)
     ) {
       return [];
     }
@@ -101,7 +102,11 @@ function normalizePreset(raw: unknown): ThemePreset | null {
   if (!name || typeof source.id !== "string" || !source.id.trim()) return null;
 
   const folders = normalizeDesktopFolders(source.folders);
-  const iconLayout = normalizeDesktopIconLayout(source.iconLayout, new Set(Object.keys(folders)));
+  const themeProfile = normalizeThemeProfile(source.themeProfile);
+  const rawWidgets = normalizePresetWidgets(source.widgets);
+  const grid = fitDesktopGridToWidgets(themeProfile.desktopGrid, rawWidgets);
+  themeProfile.desktopGrid = grid;
+  const { layout: iconLayout, widgets } = reflowDesktopGrid(normalizeDesktopIconLayout(source.iconLayout, new Set(Object.keys(folders)), grid), rawWidgets, grid);
   const createdAt = typeof source.createdAt === "string" ? source.createdAt : new Date().toISOString();
   const updatedAt = typeof source.updatedAt === "string" ? source.updatedAt : createdAt;
 
@@ -109,9 +114,9 @@ function normalizePreset(raw: unknown): ThemePreset | null {
     version: THEME_PRESET_VERSION,
     id: source.id.trim(),
     name,
-    themeProfile: normalizeThemeProfile(source.themeProfile),
+    themeProfile,
     iconLayout,
-    widgets: normalizePresetWidgets(source.widgets),
+    widgets,
     dock: normalizeDock(source.dock),
     folders,
     createdAt,

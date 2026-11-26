@@ -1,3 +1,4 @@
+import { normalizeDesktopGrid, type DesktopGridConfig } from "./widget-types";
 import type { DesktopIconId, IconId } from "@/lib/desktop-config";
 
 /* ═══════════════════════════════════════════
@@ -49,6 +50,7 @@ export type ThemeProfile = {
   fontFamily: string;
   // 手机外观
   hideTopBar: boolean;
+  desktopGrid?: DesktopGridConfig;
   // 移动端：手机画面整体上移的像素数，用于裁掉顶部状态栏占位、把底部栏顶回可视区。
   // 0 = 不上移（iOS 等能全屏的浏览器保持 0）；安卓按真实状态栏高度调到刚好铺满。
   statusBarDropPx: number;
@@ -179,6 +181,7 @@ export const DEFAULT_THEME_PROFILE: ThemeProfile = {
   fontAssetId: null,
   fontFamily: DEFAULT_FONT_FAMILY,
   hideTopBar: true,
+  desktopGrid: { rows: 6, cols: 4, hideLabels: false },
   statusBarDropPx: 0,
   cssOverrides: {},
   globalCustomCSS: "",
@@ -272,6 +275,8 @@ export function normalizeThemeProfile(raw: unknown): ThemeProfile {
     wallpaperLibrary: [],
     iconSkins: {}
   };
+
+  base.desktopGrid = normalizeDesktopGrid(source.desktopGrid);
 
   // ── Name ──
   base.name = typeof source.name === "string" && (source.name as string).trim()
