@@ -1,3 +1,4 @@
+import { activeLivePrompt, isLiveInteractionApp } from "./live-activity";
 import { chatGiftSourceLabel } from "./chat-gift-label";
 import { forwardedChatPrompt } from "./chat-forward";
 import { filterUserIdentityForCharacter, scopeUserIdentity, commonUserRelationship } from "./user-knowledge";
@@ -1170,6 +1171,7 @@ export function assemblePromptPayload(input: AssemblerInput): LLMMessage[] {
         memoryContext: { enabled: historyInjectionEnabled,
             events: historyInjectionEnabled ? (input.unifiedRecentItems || []).flatMap(item => item.kind === "event" ? [{id: item.entryId, source: item.sourceApp, keys: item.sourceKeys, knownBy: item.knownByCharacterIds}] : []) : [],
             historyIds: historyInjectionEnabled ? history.map(m => m.id) : [] } };
+    if(isLiveInteractionApp(appId,activeTags)){const live=activeLivePrompt(character.id);if(live)finalPayload.push({role:"system",content:live,_debugMeta:{marker:"active_live"}});}
     return finalPayload;
 }
 
@@ -2357,6 +2359,7 @@ export function assembleGroupPromptPayload(input: GroupAssemblerInput): LLMMessa
         memoryContext: { enabled: historyInjectionEnabled,
             events: historyInjectionEnabled ? (input.unifiedRecentItems || []).flatMap(item => item.kind === "event" ? [{id: item.entryId, source: item.sourceApp, keys: item.sourceKeys, knownBy: item.knownByCharacterIds}] : []) : [],
             historyIds: historyInjectionEnabled ? history.map(m => m.id) : [] } };
+    if(isLiveInteractionApp("group_chat",activeTags)){const live=members.map(m=>{const context=activeLivePrompt(m.character.id);return context?m.character.name+"（只供该成员本人使用）："+context:"";}).filter(Boolean).join("\n");if(live)finalPayload.push({role:"system",content:live+"\n其他群成员不能自动知道他人未公开的现场内容。",_debugMeta:{marker:"active_live"}});}
     return finalPayload;
 }
 

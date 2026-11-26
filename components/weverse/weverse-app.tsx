@@ -12,11 +12,13 @@ import {formatZonedPromptTimestamp,getSystemTimeZone} from "@/lib/character-time
 import { simpleLLMCall } from "@/lib/api-helpers";
 import { resolveAuxiliaryApiConfig } from "@/lib/settings-storage";
 import { Toggle } from "@/components/ui/form";
+import { syncLiveWorldEvent, summarizeWeverseLive } from "@/lib/live-world-sync";
 import { LIVE_CHINESE_PROXY_RULE } from "@/lib/live-chinese-proxy";
 import { recordWeverseReplaySummary } from "@/lib/weverse-memory";
 import { initialWvsViewers, nextWvsViewers } from "@/lib/weverse-live-metrics";
 import { unlockedScheduleContent } from "@/lib/schedule-public-content";
 import { useGenerationFeedback } from "@/components/generation-feedback";
+import { scheduledLives, type ScheduledLive } from "@/lib/live-activity";
 import { weverseLiveAvailability, claimWeverseLiveOpportunity } from "@/lib/weverse-live-availability";
 import { addWeverseLiveGuest, inviteArtistFromLive, isPersonalWeverseCommunity, maybeInviteUserFromLive, removeWeverseLiveGuest, requestWeverseLiveJoin, weverseArtists } from "@/lib/weverse-live-collaboration";
 import { preparePhotoStoryCaption } from "@/lib/photo-story-caption";
@@ -939,17 +941,18 @@ export function WeverseApp({ visible=true, onClose, onNotice: externalNotice }: 
     });
   };
 
-  const persistLiveOpening = (community: WeverseCommunity, characterId: string, generated: Awaited<ReturnType<typeof generateWeverseLiveOpening>>, options: {theme?:string;liveType?:"visual"|"voice"|"auto";coverUrl?:string}) => {
+  const persistLiveOpening = (community: WeverseCommunity, characterId: string, generated: Awaited<ReturnType<typeof generateWeverseLiveOpening>>, options: {theme?:string;liveType?:"visual"|"voice"|"auto";coverUrl?:string;plan?:ScheduledLive}) => {
       const available=weverseLiveAvailability(characterId);
       if(!available.free)throw new Error(available.reason);
       const member = resolveMember(community, characterId);
       const viewerCount = initialWvsViewers(community.fanCount);
       // 关键：LLM 返回后才开始排播放时间，避免生成耗时把整轮内容“提前播完”。
-      const playbackStart = Date.now() + 250;
-      const segments = scheduleLiveSegments(characterId, generated.segments, playbackStart);
-      const comments = scheduleLiveFanComments(generated.comments, playbackStart);
+      const playbackStart = options.plan?.start??(Date.now()+250);
+      const cap=options.plan?Math.min(Date.now(),options.plan.end):Infinity;
+      const segments = scheduleLiveSegments(characterId, generated.segments, playbackStart).map(x=>({...x,createdAt:Math.min(x.createdAt,cap)}));
+      const comments = scheduleLiveFanComments(generated.comments, playbackStart).map(x=>({...x,createdAt:Math.min(x.createdAt,cap)}));
       const live: WeverseLive = {
-        id: createWeverseId("wvs_live"), communityId: community.id, hostCharacterIds: [characterId], activeCharacterIds: [characterId],
+        id: options.plan?`scheduled:${options.plan.id}`:createWeverseId("wvs_live"), scheduleId:options.plan?.id, scheduledEndAt:options.plan?.end, generatedThrough:options.plan?Math.min(cap,playbackStart+60000):undefined, communityId: community.id, hostCharacterIds: [characterId], activeCharacterIds: [characterId],
         participantPresence: [{ characterId: characterId, joinedAt: playbackStart }], viewerPresence: [], liveType: generated.liveType || (options.liveType === "voice" ? "voice" : "visual"), orientation: "landscape",
         status: "live", title: generated.title || `${member.displayName} Live`, theme: options.theme?.trim() || undefined,
         coverUrl: options.coverUrl || member.liveCoverUrl || undefined, startedAt: playbackStart,
@@ -958,13 +961,29 @@ export function WeverseApp({ visible=true, onClose, onNotice: externalNotice }: 
       };
       setState(addWeverseLive(live));
       pushNotification({ kind: "live", communityId: community.id, title: `${member.displayName} 开始了 ${live.liveType === "voice" ? "Voice Live" : "Video Live"}`, body: live.title, avatarUrl: member.avatarUrl, targetType: "live", targetId: live.id, characterId, createdAt: live.startedAt });
-      if (community.userIdentityId === (userIdentity?.id || "user")) {
+      if (!options.plan&&community.userIdentityId === (userIdentity?.id || "user")) {
         void maybeInviteUserFromLive(live, community).catch(() => undefined);
       }
       return live;
   };
 
+  const catchUpScheduledLive=async(live:WeverseLive,community:WeverseCommunity)=>{
+    for(let n=0;n<3;n++){const current=loadWeverseState().lives.find(l=>l.id===live.id&&l.status==="live");if(!current?.scheduleId)break;
+      const from=current.generatedThrough??current.startedAt,to=Math.min(Date.now(),current.scheduledEndAt??Infinity,from+10*60000);if(to-from<1000)break;
+      const host=current.hostCharacterIds[0],result=await generateWeverseLiveContinuation(host,community,current,{now:new Date(from),historical:true});
+      const latest=loadWeverseState().lives.find(l=>l.id===live.id&&l.status==="live");if(!latest||latest.generatedThrough!==current.generatedThrough)break;
+      const fit=(at:number)=>Math.min(to,from+Math.floor((at-from)/30000*(to-from)));
+      const segments=scheduleLiveSegments(host,result.segments.filter(x=>!x.characterId||current.activeCharacterIds.includes(x.characterId)),from).map(x=>({...x,createdAt:fit(x.createdAt)}));
+      const comments=scheduleLiveFanComments(result.comments,from).map(x=>({...x,createdAt:fit(x.createdAt)}));
+      if(!segments.length&&!comments.length)throw Error("历史片段未生成，可重试");
+      setState(updateWeverseLive(current.id,{segments:[...latest.segments,...segments],comments:[...latest.comments,...comments],generatedThrough:to,roundCount:latest.roundCount+1}));
+    }
+  };
   const maybeStartCommunityLive = async (community: WeverseCommunity) => {
+      const existing=loadWeverseState().lives.find(l=>l.communityId===community.id&&l.status==="live"&&l.scheduleId);
+      if(existing){await catchUpScheduledLive(existing,community);return;}
+      const plan=weverseArtists(community).flatMap(id=>scheduledLives(id)).find(p=>p.platform==="weverse"&&!loadWeverseState().lives.some(l=>l.scheduleId===p.id)&&weverseLiveAvailability(p.characterId).free);
+      if(plan){const generated=await generateWeverseLiveOpening(plan.characterId,community,{theme:plan.title,now:new Date(plan.start),historical:true});if(loadWeverseState().lives.some(l=>l.scheduleId===plan.id))return;const live=persistLiveOpening(community,plan.characterId,generated,{theme:plan.title,plan});await catchUpScheduledLive(live,community);return;}
       if (isPersonalWeverseCommunity(community)) return;
       if(!claimWeverseLiveOpportunity(community.id))return;
       const current=loadWeverseState();
@@ -1043,6 +1062,7 @@ export function WeverseApp({ visible=true, onClose, onNotice: externalNotice }: 
     liveGenerationRef.current = live.id;
     setGeneratingLiveId(live.id);
     try {
+      if(currentBefore.scheduleId&&consumeThrough-(currentBefore.generatedThrough??currentBefore.startedAt)>30000){await catchUpScheduledLive(currentBefore,community);return;}
       const generated = await generateWeverseLiveContinuation(primaryCharacterId, community, currentBefore, { userComments: cleanUserComments, now: new Date(consumeThrough) });
       const current = loadWeverseState().lives.find(item => item.id === live.id);
       if (!current || current.status !== "live" || current.endedAt) return;
@@ -1139,11 +1159,12 @@ export function WeverseApp({ visible=true, onClose, onNotice: externalNotice }: 
   const finalizeLive = (live: WeverseLive) => {
     const current = loadWeverseState().lives.find((item) => item.id === live.id) || live;
     if (current.status === "ended") return;
-    const endAt = current.endedAt || Date.now();
+    const endAt = current.endedAt || Math.min(Date.now(),current.scheduledEndAt??Infinity);
     const participantPresence = current.participantPresence.map((item) => item.leftAt ? item : { ...item, leftAt: endAt });
     const viewerPresence = current.viewerPresence.map((item) => item.leftAt ? item : { ...item, leftAt: endAt });
     const finalized: WeverseLive = { ...current, status: "ended", endedAt: endAt, activeCharacterIds: [], participantPresence, viewerPresence };
     setState(updateWeverseLive(current.id, finalized));
+    void Promise.allSettled([syncLiveWorldEvent("weverse",current.id),summarizeWeverseLive(current.id)]).then(results=>{if(results.some(r=>r.status==="rejected"))onNotice?.("Live 已保留，部分摘要待重试。");});
   };
 
   const manuallyEndLive = (live: WeverseLive) => {
@@ -1162,6 +1183,7 @@ export function WeverseApp({ visible=true, onClose, onNotice: externalNotice }: 
       comments: current.comments.filter((item) => item.createdAt <= now),
     };
     setState(updateWeverseLive(live.id, finalized));
+    void Promise.allSettled([syncLiveWorldEvent("weverse",live.id),summarizeWeverseLive(live.id)]).then(results=>{if(results.some(r=>r.status==="rejected"))onNotice?.("Live 已保留，部分摘要待重试。");});
     if (getWvsBackground() === live.id) setWvsBackground(null);
     if (route.type === "live" && route.liveId === live.id) back();
     onNotice?.("Live 已结束");
@@ -1211,7 +1233,7 @@ export function WeverseApp({ visible=true, onClose, onNotice: externalNotice }: 
           if(host&&!host.startsWith("user:")&&!weverseLiveAvailability(host,now,item.id).free)manuallyEndLive(item);
         });
       }
-      const due = loadWeverseState().lives.filter((item) => !item.official && item.status === "live" && item.endedAt && item.endedAt <= now);
+      const due = loadWeverseState().lives.filter((item) => !item.official && item.status === "live" && ((item.endedAt&&item.endedAt<=now)||(item.scheduledEndAt&&item.scheduledEndAt<=now)));
       due.forEach((item) => finalizeLive(item));
     }, 900);
     return () => window.clearInterval(timer);

@@ -2,7 +2,7 @@ import {contentPrompt} from './content-prompt-settings';
 import {contentLanguageRule,assertContentLanguage} from './content-language';
 import {loadCharacters} from "./character-storage";
 import {resolveUserIdentity} from "./settings-storage";
-import {activeWorldline, worldlineEnabledForApp} from "./worldline-storage";
+import {activeWorldline, worldlineEnabledForApp, selectRecentPublicWorldEvents} from "./worldline-storage";
 import { twitterThreadReplies } from "./twitter-thread";
 import { getChatImageFromIndexedDB } from "./chat-asset-storage";
 import { translateContentTexts } from "./content-translation";
@@ -52,7 +52,7 @@ const publicWorld = (state: TwitterState, max = 2200, focus = "") => {
  const tokens=(query.match(/[\p{L}\p{N}_]{2,}/gu)||[]).flatMap(t=>/[\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(t)?Array.from({length:Math.max(0,t.length-1)},(_,i)=>t.slice(i,i+2)):[t]);
  const score=(s:string)=>tokens.filter(t=>s.normalize('NFKC').toLocaleLowerCase().includes(t)).length;
  const pick=(rows:string[],n:number)=>focus?rows.map(text=>({text,rank:score(text)})).filter(r=>r.rank>=2).sort((a,b)=>b.rank-a.rank).slice(0,n).map(r=>r.text):rows.slice(0,n);
- const now=Date.now(),events=enabled?world.events.filter(e=>e.visibility==='public'&&Date.parse(e.occurredAt)<=now&&now-Date.parse(e.endsAt||e.occurredAt)<14*86400000).sort((a,b)=>b.occurredAt.localeCompare(a.occurredAt)).map(e=>`${e.occurredAt} ${e.title}：${e.detail}`):[];
+ const now=Date.now(),events=enabled?selectRecentPublicWorldEvents(world.events,now,8).map(e=>`${e.occurredAt} ${e.title}：${e.detail}`):[];
  const latest=enabled?(world.progressHistory.at(-1)?.text||world.currentState):'';
  const basics=[state.publicWorldContext,twitterWorldBookText(state,false,12000),...(enabled?world.archive.flatMap(g=>g.entries.map(e=>`${e.title} ${e.content}`)):[])].filter(Boolean);
  return [pick(latest?[`最新进展：${latest}`]:[],1).join('\n').slice(0,Math.floor(max*.28)),pick(events,focus?2:3).map(t=>t.slice(0,250)).join('\n').slice(0,Math.floor(max*.30)),pick(basics,focus?2:3).map(t=>t.slice(0,Math.floor(max*.14))).join('\n').slice(0,Math.floor(max*.42))].filter(Boolean).join('\n').slice(0,max);
