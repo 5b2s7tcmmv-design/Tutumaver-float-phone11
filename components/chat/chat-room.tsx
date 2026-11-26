@@ -20,7 +20,7 @@ import { loadManualCallGroups, saveManualCallGroup, removeManualCallGroup } from
 import { ManualCallDialog } from "./manual-call-dialog";
 import { VoiceFavoriteDialog, type FavoriteVoiceDraft } from "./voice-favorite-dialog";
 import { existingVoiceBlob } from "@/lib/voice-favorites";
-import { originalCallSpeech } from "@/lib/call-transcript";
+import { originalCallSpeech, displayCallSpeech, displayCallAction } from "@/lib/call-transcript";
 
 import { createForwardedChatRecord, forwardedChatPrompt } from "@/lib/chat-forward";
 import type { ForwardedChatRecord } from "@/lib/chat-forward";
@@ -522,6 +522,15 @@ function formatKktChatClock(dateStr: string): string {
     return `${hour % 12 || 12}:${String(date.getMinutes()).padStart(2, "0")} ${hour < 12 ? "AM" : "PM"}`;
 }
 
+function chatQuotePreview(message: ChatMessage): string {
+    if (message.mediaType === "audio") {
+        const raw = message.mediaData?.label || message.mediaData?.synthesizedFromText || message.content || "";
+        const speech = displayCallSpeech(originalCallSpeech(raw));
+        return speech && !/^\[?语音(?:消息)?\]?$/.test(speech) ? `[语音] ${speech}` : "[语音]";
+    }
+    return splitBilingualText(message.content)?.original || message.content;
+}
+
 function KktDateDivider({ dateTime }: { dateTime: string }) {
     return (
         <div className="chat-date-divider-row flex justify-center w-full">
@@ -900,7 +909,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
             {quotingMessage && (
                 <div className="chat-quote-bar">
                     <div className="flex-1 ts-12 text-[var(--c-icon)] overflow-hidden text-ellipsis whitespace-nowrap">
-                        引用 {quotingMessage.role === "user" ? "你" : characterName}: {quotingMessage.content.slice(0, 40)}
+                        引用 {quotingMessage.role === "user" ? "你" : characterName}: {chatQuotePreview(quotingMessage).slice(0, 40)}
                     </div>
                     <button onClick={onClearQuote} className="ui-bare-btn text-[var(--c-icon)] ts-16 leading-none p-[2px]">✕</button>
                 </div>
@@ -1715,10 +1724,9 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
     const groupCharacterNames = useMemo(() => groupCharacters.map(item => item.name).filter(Boolean).join("、"), [groupCharacters]);
 
     const resolveGroupQuoteMetadata = useCallback((quotePreview?: string): Partial<NonNullable<ChatMessage["mediaData"]>> => {
-        if (!session.isGroup) return {};
         const rawPreview = String(quotePreview || "").trim();
         if (!rawPreview) return {};
-        const normalize = (value: string) => value.replace(/\s+/g, " ").trim();
+        const normalize = (value: string) => value.replace(/^\[语音(?:条)?[：:]\s*([^\]]*)\]$/, "$1").replace(/^\[语音\]\s*/, "").replace(/\s+/g, " ").trim();
         const variants = (value: string): string[] => {
             const raw = normalize(value);
             if (!raw) return [];
@@ -1732,7 +1740,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         for (let index = history.length - 1; index >= 0; index -= 1) {
             const candidate = history[index];
             if (candidate.role === "system" || candidate.role === "tool") continue;
-            const candidateVariants = variants(candidate.content || candidate.mediaData?.label || "");
+            const candidateVariants = variants(candidate.mediaType === "audio" ? chatQuotePreview(candidate) : candidate.content || candidate.mediaData?.label || "");
             if (candidateVariants.length === 0) continue;
             const exact = previewVariants.some(preview => candidateVariants.includes(preview));
             if (exact) {
@@ -1745,8 +1753,11 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             }
         }
         if (!fuzzy) return {};
+        const voicePreview = fuzzy.mediaType === "audio" ? {quotePreview: chatQuotePreview(fuzzy)} : {};
+        if (!session.isGroup) return fuzzy.mediaType === "audio" ? {quoteMessageId:fuzzy.id,quoteRole:fuzzy.role,...voicePreview} : {};
         if (fuzzy.role === "user") {
             return {
+                ...voicePreview,
                 quoteMessageId: fuzzy.id,
                 quoteRole: "user",
                 quoteSenderName: groupMemberName(session, GROUP_SELF_KEY, null, userIdentity?.name || "我"),
@@ -1755,6 +1766,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         const senderId = fuzzy.senderCharacterId || "";
         const senderChar = senderId ? groupCharMap.get(senderId) : undefined;
         return {
+            ...voicePreview,
             quoteMessageId: fuzzy.id,
             quoteRole: fuzzy.role,
             ...(senderId ? { quoteSenderCharacterId: senderId } : {}),
@@ -2816,7 +2828,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         setChatToast(null);
     };
 
-    const showChatToast = (text: string, duration = 2000) => {
+    const showChatToast = (text: string, duration = /失败|错误|超时|异常/.test(text) ? 5000 : /生成完成|刷新完成/.test(text) ? 3000 : 2200) => {
         clearTimeout(chatToastTimer.current);
         setChatToast(text);
         if (duration > 0) {
@@ -3108,7 +3120,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                 role: "assistant",
                 content: part.content,
                 mediaType,
-                mediaData: part.mediaData,
+                mediaData: part.mediaType === "quote" ? {...part.mediaData,...resolveGroupQuoteMetadata(part.mediaData?.quotePreview)} : part.mediaData,
                 responseBatchId,
                 rawResponseText,
                 statusPanel: idx === metaIdx && statusPanel ? statusPanel : undefined,
@@ -3941,7 +3953,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                                 role: "assistant",
                                 content: part.content,
                                 mediaType: part.mediaType,
-                                mediaData: part.mediaData,
+                                mediaData: part.mediaType === "quote" ? {...part.mediaData,...resolveGroupQuoteMetadata(part.mediaData?.quotePreview)} : part.mediaData,
                                 responseBatchId,
                                 rawResponseText,
                                 responseRoundId,
@@ -4282,7 +4294,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         const isQuoting = !!quotingMessage;
         const quoteData = quotingMessage ? {
             quoteMessageId: quotingMessage.id,
-            quotePreview: splitBilingualText(quotingMessage.content)?.original || quotingMessage.content,
+            quotePreview: chatQuotePreview(quotingMessage),
             quoteRole: quotingMessage.role,
             ...(session.isGroup && quotingMessage.role === "assistant" && quotingMessage.senderCharacterId
                 ? { quoteSenderCharacterId: quotingMessage.senderCharacterId }
@@ -4952,7 +4964,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                     replacementMessages.push({
                         content: part.content,
                         mediaType: part.mediaType,
-                        mediaData: part.mediaData,
+                        mediaData: part.mediaType === "quote" ? {...part.mediaData,...resolveGroupQuoteMetadata(part.mediaData?.quotePreview)} : part.mediaData,
                         rawResponseText: segment.responseText,
                         responseBatchId,
                         statusPanel: attachHere && statusPanel ? statusPanel : undefined,
@@ -5466,7 +5478,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                 // 双方都是语音条时按存储值打底、重解析字段覆盖。
                 const mediaData = part.mediaType === "audio" && base.mediaType === "audio" && base.mediaData
                     ? { ...base.mediaData, ...part.mediaData, ...(base.mediaData.voiceTextEdited ? { label: base.mediaData.label } : {}) }
-                    : part.mediaData;
+                    : part.mediaType === "quote" && base.mediaType === "quote" ? {...part.mediaData,...base.mediaData} : part.mediaData;
                 projected.push({
                     ...base,
                     id,
@@ -6150,8 +6162,8 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                                                     </div>
                                                 </div>
                                             ) : (
-                                                <div key={gMsg.id} className={`flex ${gMsg.role === "user" ? "justify-end" : "justify-start"}`}>
-                                                    <div className="flex flex-col min-w-0 max-w-[75%]">
+                                                <div key={gMsg.id} className={`chat-folded-call-row chat-msg-wrapper flex ${gMsg.role === "user" ? "justify-end" : "justify-start"}`} data-role={gMsg.role} data-consecutive="">
+                                                    <div className="chat-folded-call-content flex flex-col min-w-0 max-w-[75%]">
                                                         {session.isGroup && gMsg.role !== "user" && (
                                                             <span className="chat-group-sender-name">{groupMemberName(session, gMsg.senderCharacterId || "", gMsg.senderCharacterId ? groupCharMap.get(gMsg.senderCharacterId) : null, gMsg.senderName || "群成员")}{renderGroupRoleBadge(gMsg.senderCharacterId)}</span>
                                                         )}
@@ -6168,14 +6180,13 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                                                                 }
                                                             }}
                                                             onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(gMsg.id, bubbleContextAnchor(e.currentTarget as HTMLElement)); }}
-                                                            className={`chat-bubble-role-${gMsg.role} py-2 px-3 rounded-md break-words relative cursor-pointer`}
+                                                            className={vcGroup.callType === "video" && (gMsg.mediaData?.callLineKind === "action" || /^【动作】/.test(gMsg.content)) ? "chat-folded-call-action relative cursor-pointer" : `chat-bubble-role-${gMsg.role} py-2 px-3 rounded-md break-words relative cursor-pointer`}
+                                                            data-ui={vcGroup.callType === "video" && (gMsg.mediaData?.callLineKind === "action" || /^【动作】/.test(gMsg.content)) ? undefined : gMsg.role === "user" ? "bubble-user" : "bubble-bot"}
                                                             {...(activeMessageId === gMsg.id ? { "data-active": "" } : {})}
                                                         >
-                                                            <BilingualTextBlock
-                                                                text={gMsg.displayProjected ? gMsg.content : renderDisplayText(gMsg.content, gMsg.role === "user" ? 1 : 2, false)}
-                                                                mode="markdown"
-                                                                defaultExpanded={session.collapseBilingualTranslation !== false ? false : true}
-                                                            />
+                                                            {vcGroup.callType === "video" && (gMsg.mediaData?.callLineKind === "action" || /^【动作】/.test(gMsg.content))
+                                                                ? displayCallAction((gMsg.displayProjected ? gMsg.content : renderDisplayText(gMsg.content, gMsg.role === "user" ? 1 : 2, false)).replace(/^【动作】\s*/, ""))
+                                                                : <BilingualTextBlock text={gMsg.displayProjected ? gMsg.content : renderDisplayText(gMsg.content, gMsg.role === "user" ? 1 : 2, false)} mode="markdown" defaultExpanded={session.collapseBilingualTranslation === false}/>}
                                                             {activeMessageId === gMsg.id && renderBubbleContextMenu(gMsg, { allowMultiSelect: false })}
                                                         </div>
                                                     </div>

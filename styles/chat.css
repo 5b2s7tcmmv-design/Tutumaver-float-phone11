@@ -8714,3 +8714,10 @@
 .call-visual-preview-viewport{position:relative;height:clamp(260px,46dvh,400px);overflow:hidden;background:var(--c-input);border-radius:12px;}
 .call-visual-preview-frame{position:absolute;left:50%;top:50%;transform-origin:center;overflow:hidden;border-radius:18px;pointer-events:none;}
 .call-visual-preview-note{margin:5px 0 0;text-align:center;font-size:calc(10px * var(--app-text-scale,1));color:var(--c-icon);}
+
+/* Folded Chat call records: speech follows ordinary Chat skins; actions stay centered. */
+.chat-vc-group-border .chat-folded-call-row { width:100%; margin:0; }
+.chat-vc-group-border .chat-folded-call-row:has(.chat-folded-call-action) { justify-content:center!important; }
+.chat-vc-group-border .chat-folded-call-row:has(.chat-folded-call-action) .chat-folded-call-content { width:100%; max-width:95%; align-items:center; }
+.chat-vc-group-border .chat-folded-call-action { width:100%; text-align:center; font-style:italic; font-size:calc(12px * var(--app-text-scale,1)); line-height:1.65; color:var(--c-icon,#777); white-space:pre-wrap; overflow-wrap:anywhere; background:none; border:0; box-shadow:none; }
+.chat-app[data-chat-theme="dark"] .chat-vc-group-border .chat-folded-call-action {color:#bcbcbc;}
