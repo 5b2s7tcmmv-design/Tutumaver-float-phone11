@@ -1,3 +1,4 @@
+import { chatGiftSourceLabel } from "./chat-gift-label";
 import { contactIntroductionEntries } from "./contact-introduction";
 import {loadCity,cityEntries} from './icity-store';
 import { forwardedChatPrompt } from "./chat-forward";
@@ -264,6 +265,7 @@ export function loadNativeTimeline(
                     msg.mediaData.adminMuteMinutes,
                 );
             }
+            else if (msg.mediaType === "app_card" && msg.mediaData?.appHistoryText) content = msg.mediaData.appHistoryText;
             // Represent rich media as text when content is empty
             else if (!content && msg.mediaType) {
                 if (msg.mediaType === "sticker") content = `[表情包:${msg.mediaData?.label || "贴纸"}]`;
@@ -293,10 +295,10 @@ export function loadNativeTimeline(
                     const shopping = Boolean(msg.mediaData?.shoppingGiftId || msg.mediaData?.shoppingOrderId);
                     const food = msg.mediaData?.label === "外卖卡";
                     content = shopping
-                        ? `[${food ? "外卖" : "礼物"}${giftWasDeliveredWhenSent(msg) ? "已送达" : food ? "正在配送" : "尚未送达"}:${giftName}:${msg.mediaData?.recipientName || "对方"}]`
+                        ? `[${chatGiftSourceLabel(msg.mediaData)}${giftWasDeliveredWhenSent(msg) ? "已送达" : food ? "正在配送" : "尚未送达"}:${giftName}:${msg.mediaData?.recipientName || "对方"}]`
                         : msg.mediaData?.recipientName
-                            ? `[礼物:${giftName}:${msg.mediaData.recipientName}]`
-                            : `[礼物:${giftName}]`;
+                            ? `[${chatGiftSourceLabel(msg.mediaData)}:${giftName}:${msg.mediaData.recipientName}]`
+                            : `[${chatGiftSourceLabel(msg.mediaData)}:${giftName}]`;
                     }
                 }
                 else if (msg.mediaType === "payment_request") content = formatShoppingPaymentRequestHistory({
@@ -311,6 +313,7 @@ export function loadNativeTimeline(
                     title: msg.mediaData?.xiaohongshuTitle,
                     body: msg.mediaData?.xiaohongshuBody,
                     description: msg.mediaData?.xiaohongshuDescription,
+                    comments: msg.mediaData?.xiaohongshuComments,
                 });
                 else if (msg.mediaType === "location") content = `[位置:${msg.mediaData?.label || ""}]`;
             }
@@ -406,10 +409,10 @@ export function loadNativeTimeline(
                     const shopping = Boolean(msg.mediaData?.shoppingGiftId || msg.mediaData?.shoppingOrderId);
                     const food = msg.mediaData?.label === "外卖卡";
                     content = shopping
-                        ? `[${food ? "外卖" : "礼物"}${giftWasDeliveredWhenSent(msg) ? "已送达" : food ? "正在配送" : "尚未送达"}:${giftName}:${msg.mediaData?.recipientName || "对方"}]`
+                        ? `[${chatGiftSourceLabel(msg.mediaData)}${giftWasDeliveredWhenSent(msg) ? "已送达" : food ? "正在配送" : "尚未送达"}:${giftName}:${msg.mediaData?.recipientName || "对方"}]`
                         : msg.mediaData?.recipientName
-                            ? `[礼物:${giftName}:${msg.mediaData.recipientName}]`
-                            : `[礼物:${giftName}]`;
+                            ? `[${chatGiftSourceLabel(msg.mediaData)}:${giftName}:${msg.mediaData.recipientName}]`
+                            : `[${chatGiftSourceLabel(msg.mediaData)}:${giftName}]`;
                     }
                 }
                 else if (msg.mediaType === "payment_request") content = formatShoppingPaymentRequestHistory({
@@ -419,7 +422,7 @@ export function loadNativeTimeline(
                     itemsText: msg.mediaData?.paymentRequestItemsText,
                 });
                 else if (msg.mediaType === "app_card") {
-                    if (["theqoo", "twitter"].includes(msg.mediaData?.appId || "") && msg.mediaData?.appHistoryText) {
+                    if (msg.mediaData?.appHistoryText) {
                         content = msg.mediaData.appHistoryText;
                     } else {
                     const appName = msg.mediaData?.appName || "APP";
@@ -436,6 +439,7 @@ export function loadNativeTimeline(
                     title: msg.mediaData?.xiaohongshuTitle,
                     body: msg.mediaData?.xiaohongshuBody,
                     description: msg.mediaData?.xiaohongshuDescription,
+                    comments: msg.mediaData?.xiaohongshuComments,
                 });
                 else if (msg.mediaType === "media_file") {
                     const ft = msg.mediaData?.fileType;
