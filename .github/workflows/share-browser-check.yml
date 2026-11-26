@@ -1,7 +1,7 @@
 name: Validate share Browser integration
 on:
   push:
-    branches: [main, 'sync/full-080-applicable']
+    branches: [main, 'sync/full-080-applicable', 'sync/full-089-applicable']
     paths:
       - "components/browser/**"
       - "components/checkphone/**"
@@ -79,6 +79,17 @@ jobs:
           node-version: "20"
           cache: "npm"
       - run: npm ci
+      - name: Face-to-face regression
+        run: node scripts/check-face-to-face-audit.cjs
+      - name: Weverse navigation regression
+        run: node scripts/check-weverse-navigation-audit.cjs
+      - name: Install isolated CSS test dependencies
+        run: npm install --prefix "$RUNNER_TEMP/rf-test-runtime" --no-package-lock --no-save jsdom@26 postcss@8
+      - name: Face-to-face skin and plugin regression
+        env:
+          JSDOM_PATH: ${{ runner.temp }}/rf-test-runtime/node_modules/jsdom
+          NODE_PATH: ${{ runner.temp }}/rf-test-runtime/node_modules
+        run: node scripts/check-face-menu-skins.cjs
       - name: TypeScript check
         run: npm run typecheck
       - name: Next.js production build
