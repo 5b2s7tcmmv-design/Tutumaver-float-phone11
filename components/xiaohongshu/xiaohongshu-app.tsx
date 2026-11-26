@@ -140,14 +140,7 @@ const HOME_FEED_TABS: Array<{ id: XiaohongshuHomeFeedTab; label: string }> = [
   { id: "video", label: "视频" },
 ];
 
-const DEFAULT_XHS_AVATARS = [
-  "/xiaohongshu/avatars/default-01.png",
-  "/xiaohongshu/avatars/default-02.png",
-  "/xiaohongshu/avatars/default-03.png",
-  "/xiaohongshu/avatars/default-04.png",
-  "/xiaohongshu/avatars/default-05.png",
-  "/xiaohongshu/avatars/default-06.png",
-];
+const DEFAULT_XHS_AVATAR = "/npc-default-avatar.png";
 
 const XHS_DM_EMOJIS = ["😊", "😂", "🥺", "😭", "😳", "👍", "❤️", "✨", "🌸", "🍵", "🥰", "🤔", "😎", "🙌", "💌", "🫶"];
 
@@ -247,20 +240,12 @@ function makeNpcAccount(name: string): XiaohongshuAccount {
   };
 }
 
-function hashString(value: string): number {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
-  }
-  return hash;
-}
-
-function pickDefaultAvatar(seed: string): string {
-  return DEFAULT_XHS_AVATARS[hashString(seed || "npc") % DEFAULT_XHS_AVATARS.length];
+function pickDefaultAvatar(_seed: string): string {
+  return DEFAULT_XHS_AVATAR;
 }
 
 function XhsAvatar({ className, src, name }: { className: string; src?: string | null; name: string }) {
-  const isDefaultAvatar = Boolean(src?.startsWith("/xiaohongshu/avatars/"));
+  const isDefaultAvatar = Boolean(src === DEFAULT_XHS_AVATAR);
   return (
     <div className={`${className}${isDefaultAvatar ? " xhs-default-avatar" : ""}`}>
       {src ? <img src={src} alt="" /> : <span>{(name || "?").slice(0, 1)}</span>}
