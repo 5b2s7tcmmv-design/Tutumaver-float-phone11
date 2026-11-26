@@ -1,3 +1,4 @@
+import {mediaPreferencePrompt,allowMediaIntent} from './media-preferences';
 import {loadCity,saveCity,cityEntries,cityNotice,personalBook,canReadCity,tickCityLikes,cityWorldBrowseEntries,rememberCityBrowse,cityKnownIdentity,type CityEntry} from './icity-store';
 import {loadCharacters} from './character-storage';
 import {generateDiaryEntryForCharacter} from './diary-entry-engine';
@@ -18,12 +19,12 @@ export async function writeCityDiary(author:string,bookId=personalBook(author),t
   const shared=cityEntries(s).filter(e=>e.book===bookId&&canReadCity(s,e,author)&&!history.some(h=>h.id===e.id)).map(e=>({id:e.id,characterId:e.author,characterName:s.accounts.find(a=>a.id===e.author)?.name||'对方',title:e.title,dateLabel:e.createdAt,mood:'',weather:'',tags:[],body:e.text,blocks:[{type:'paragraph' as const,text:e.text}],trigger:'manual' as const,createdAt:e.createdAt,updatedAt:e.createdAt}));
   const instructions=book.kind==='exchange'?`这是你与user的1v1交换日记「${book.name}」。读本册历史和user回信，考量双方是友情、爱情还是亲情，写想告诉对方的内容。不必逐句回答或交代所有秘密；按性格决定交流、回避，或把藏事留给私人日记。不写成评论区，保持自己的节奏。`:'结合写日记时的心情和状态，自主决定发布的可见范围。JSON额外输出visibility:"world"或"friends"或"private"。世界可被普通网友及其他角色偶然读到；你的好友日记仅user和手动添加的iCity好友可读；现实认识不代表知道彼此账号；私密仅自己。公开或好友日记使用网名身份，不泄露自己或他人的真实姓名、名人身份、可识别的隐私。';
   const diaryStyle='本轮按iCity规则写自然日记，覆盖旧预设的固定私人日记、统一长度和花式区块要求。世界与好友日记是适合公开的随笔、生活记录或心绪；私密日记通常更长、更私人，可写心结、隐秘愿望、真正开心或伤心的事，仍按性格，不必每次痛苦、恋爱或围绕user。正文使用paragraph区块。可以无图，或在JSON photos字段给最多三条简短画面描述字符串，不接相册、不自动生图。';
-  const draft=await generateDiaryEntryForCharacter(author,[...history,...shared],trigger,{signal:controller.signal,instruction:instructions+diaryStyle});
+  const draft=await generateDiaryEntryForCharacter(author,[...history,...shared],trigger,{signal:controller.signal,instruction:instructions+diaryStyle+mediaPreferencePrompt('diary',author)});
   if(controller.signal.aborted)throw new DOMException('已打断','AbortError');
   const next=loadCity(),live=next.books.find(b=>b.id===bookId);
   if(!next.enrolled?.includes(author)||!live?.members.includes(author))throw Error('角色已移出，未保存本次生成');
   const created=createDiaryEntry({characterId:author,characterName:c.name,...draft,trigger});
-  next.meta[created.id]={book:bookId,visibility:book.kind==='personal'?(draft.visibility||'private'):'private',selected:[],photos:((draft as typeof draft & {photos?:string[]}).photos||[]).slice(0,3).map(t=>'text://'+encodeURIComponent(t))};
+  next.meta[created.id]={book:bookId,visibility:book.kind==='personal'?(draft.visibility||'private'):'private',selected:[],photos:((draft as typeof draft & {photos?:string[]}).photos||[]).filter(t=>allowMediaIntent('diary',author,t)).slice(0,3).map(t=>'text://'+encodeURIComponent(t))};
   const a=next.accounts.find(a=>a.id===author);
   if(book.kind==='personal'&&a){a.autoDiary={...(a.autoDiary||{enabled:false,hours:24}),lastAt:Date.now(),retryAt:undefined,paused:false};}
   if(live.kind==='exchange'&&live.replyTimer)live.replyTimer={...live.replyTimer,dueAt:undefined,paused:false,retryAt:undefined};

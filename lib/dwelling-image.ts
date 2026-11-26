@@ -101,7 +101,7 @@ export async function generateDwellingRoomImage(
         try {
             const availability = getDwellingImageAvailability(characterId);
             if (!availability.available) return { assetId: null, error: "生图未开启" };
-            const result = await generateImageFromConfiguredApi({
+            const result = await generateImageFromConfiguredApi({userInitiated:true,
                 description: buildRoomImagePrompt(room),
                 characterId,
                 appId: "dwelling",

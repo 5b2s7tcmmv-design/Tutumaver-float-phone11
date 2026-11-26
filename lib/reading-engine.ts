@@ -81,7 +81,7 @@ async function resolveReadingInput(
     }
     if (!apiConfig) return null;
 
-    const presets = loadPresets();
+    const presets = loadPresets(characterId);
     let preset: PresetConfig | null = presetId
         ? presets.find(p => p.id === presetId) ?? null
         : null;

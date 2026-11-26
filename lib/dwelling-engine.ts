@@ -29,7 +29,7 @@ function resolveDwellingConfigs(characterId: string) {
     const apiConfigs = loadApiConfigs();
     const apiConfig = apiConfigs.find(c => c.id === slot.apiConfigId) ?? apiConfigs[0];
 
-    const presets = loadPresets();
+    const presets = loadPresets(characterId);
     let preset = slot.presetId ? presets.find(p => p.id === slot.presetId) ?? null : null;
     if (!preset) preset = presets.find(p => p.builtIn) ?? null;
 

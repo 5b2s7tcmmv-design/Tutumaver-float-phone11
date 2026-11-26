@@ -152,7 +152,7 @@ function resolveStoryConfigs(characterId: string): {
     throw new ChatEngineError(`API Configuration not found for ${character.name}.`);
   }
 
-  const presets = loadPresets();
+  const presets = loadPresets(characterId);
   let preset = activeSlot.presetId ? presets.find((item) => item.id === activeSlot.presetId) || null : null;
   if (!preset) {
     preset = presets.find((item) => item.builtIn) ?? null;

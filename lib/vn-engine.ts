@@ -77,7 +77,7 @@ export function resolveVnConfigs(characterId: string): {
     throw new ChatEngineError(`API Configuration not found for ${character.name}.`);
   }
 
-  const presets = loadPresets();
+  const presets = loadPresets(characterId);
   let preset = activeSlot.presetId
     ? presets.find((p) => p.id === activeSlot.presetId) || null
     : null;

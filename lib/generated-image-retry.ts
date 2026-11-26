@@ -97,6 +97,7 @@ export async function generateAndApplyChatGeneratedImage(
             channel: "dm_user",
             appId: "chat",
             mode: options?.forceGenerated ? "generate" : "auto",
+            userInitiated:options?.forceGenerated===true,
             intentKind: effectiveUseReference || /自拍|合照|人像|selfie|portrait/i.test(description) ? "selfie" : /食物|料理|餐|吃|food|meal/i.test(description) ? "food" : "other",
             useReferenceImage: effectiveUseReference,
             signal: options?.signal,
@@ -186,7 +187,7 @@ export async function retryMomentGeneratedPhoto(
     try {
         const generated = await resolveMediaForUse({
             actor: { type: "character", characterId: post.authorId }, description,
-            channel: "moments", appId: "moments", mode: "generate", useReferenceImage: effectiveUseReference,
+            channel: "moments", appId: "moments", mode: "generate", userInitiated:true, useReferenceImage: effectiveUseReference,
         });
         if (!generated?.imageUrl) throw new Error("当前相册策略不允许生图，或图片 API 未返回图片");
         const updated = updateMomentPost(post.id, {

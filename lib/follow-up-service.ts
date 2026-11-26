@@ -1224,7 +1224,7 @@ export async function parseAndSaveResponse(
                     avatar,
                     ...(isGroup ? { isGroup: true } : {}),
                 });
-                sendBrowserNotification(charName, { body: partBody(part).slice(0, 60), icon: avatar || undefined });
+                sendBrowserNotification(charName, { body: "有新的消息", icon: avatar || undefined });
             }, index * BACKGROUND_MESSAGE_STAGGER_MS);
         });
     }
