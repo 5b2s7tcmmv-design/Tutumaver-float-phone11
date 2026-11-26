@@ -1326,11 +1326,11 @@ function SetupScreen({
       {promptEditorOpen && (
         <div className="absolute inset-0 z-50 flex items-center justify-center p-6">
           <div className="interview-modal-scrim" onClick={() => setPromptEditorOpen(false)} />
-          <div className="relative w-full max-w-lg h-[75vh] interview-glass-panel p-6 flex flex-col z-50 fade-in bg-[#111]/80">
+          <div className="relative w-full max-w-lg h-[75vh] interview-glass-panel interview-prompt-editor p-6 flex flex-col z-50 fade-in">
             <header className="flex justify-between items-center mb-6">
               <div>
                 <SmallCaps className="text-white/50">EDITOR PROMPTS</SmallCaps>
-                <div className="text-white text-lg mt-1">{currentProgramme.name} · 提示词</div>
+                <div className="interview-prompt-title text-white mt-1">{currentProgramme.name} · 提示词</div>
               </div>
               <button className="interview-icon-btn" onClick={() => setPromptEditorOpen(false)}><X size={20} /></button>
             </header>
