@@ -1,5 +1,6 @@
 "use client";
 import { DEFAULT_CHAT_SOUNDS, withDefaultChatSound } from "@/lib/default-notification-sounds";
+import { CallVisualSettings } from "./call-visual-settings";
 import { PhoneLockSettings } from "./phone-lock-settings";
 import { loadVoiceConfigs } from "@/lib/settings-storage";
 
@@ -389,6 +390,8 @@ export function GlobalChatInfoSettings({ onBack }: { onBack: () => void }) {
                         </div>
                     </div>
                     <input ref={backgroundInputRef} type="file" accept="image/*" className="hidden" onChange={event => { void changeBackground(event.target.files?.[0]); event.target.value = ""; }} />
+                    <CallVisualSettings kind="video"/>
+                    <CallVisualSettings kind="voice"/>
                     <button className="menu-item" onClick={() => { setDraftCSS(customCSS); setEditingCSS(true); }}>
                         <Code size={20} className="text-[var(--c-icon)]" />
                         <div className="menu-label-group"><span className="menu-label">聊天室自定义 CSS 样式</span><span className="menu-desc">与单独私聊共用资源方案</span></div>

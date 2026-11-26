@@ -21,6 +21,7 @@ import { displayCallAction, originalCallSpeech, splitCallTranscript, VOICE_CALL_
 import { groupMemberAvatar, groupMemberName } from "@/lib/group-chat-profile";
 import { CallTranscriptBubble } from "./call-transcript-bubble";
 import { BilingualTextBlock } from "./message-bubble";
+import {useCallVisual,useCallSessionVisual} from "@/lib/chat-call-appearance";
 import { useCallKeyboardOffsetStyle } from "./use-call-keyboard-offset";
 import { CallVolumeControl, UploadedVideoVolumeControl } from "./call-volume-control";
 import { useCallScreenSounds } from "@/lib/chat-sound";
@@ -126,6 +127,7 @@ export function GroupCallScreen({ type, session, characters, onEnd, initiator = 
     onEndRef.current = onEnd;
     const endTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const keyboardOffsetStyle = useCallKeyboardOffsetStyle();
+    const videoVisual=useCallVisual("video"),voiceVisual=useCallVisual("voice");
     const effectiveUserAvatar = useChatUserAvatar(session), globalCallAppearance = useGlobalCallAppearance();
     const iosDevice = isIOSDevice();
     const playCallAudio = useCallback((blob: Blob, onStart?: () => void) => iosDevice ? playAudioBlob(blob, onStart, true) : playAudioBlobViaMediaElement(blob, onStart, true), [iosDevice]);
@@ -210,12 +212,13 @@ export function GroupCallScreen({ type, session, characters, onEnd, initiator = 
     useEffect(() => { if (!minimized || !isVideo)
         return; stopAudio(); sttRef.current?.abort(); sttRef.current = null; setInputOpen(false); setInterimText(""); if (["AI_SPEAKING", "USER_SPEAKING"].includes(stateRef.current))
         setCallState("IDLE"); }, [minimized, stopAudio, setCallState]);
+    const liveCallAssets=useCallSessionVisual(session);
     const [resolvedBgs, setResolvedBgs] = useState<Record<string, string>>({});
     const [voiceBgResolved, setVoiceBgResolved] = useState<string | null>(null);
-    useEffect(() => { let canceled = false; (async () => { const { getChatImageFromIndexedDB } = await import("@/lib/chat-asset-storage"); const resolve = async (value?: string) => !value ? "" : /^(data:|https?:)/.test(value) ? value : await getChatImageFromIndexedDB(value) || ""; const map = { ...session.groupVideoBackgrounds, self: session.groupVideoBackgrounds?.self || globalCallAppearance }; const pairs = await Promise.all(Object.entries(map).map(async ([id, value]) => [id, await resolve(value)])); const bg = await resolve(session.voiceBackground); if (!canceled) {
+    useEffect(() => { let canceled = false; (async () => { const { getChatImageFromIndexedDB } = await import("@/lib/chat-asset-storage"); const resolve = async (value?: string) => !value ? "" : /^(data:|https?:)/.test(value) ? value : await getChatImageFromIndexedDB(value) || ""; const map = { ...liveCallAssets.groupVideoBackgrounds, self: liveCallAssets.groupVideoBackgrounds?.self || globalCallAppearance }; const pairs = await Promise.all(Object.entries(map).map(async ([id, value]) => [id, await resolve(value)])); const bg = await resolve(liveCallAssets.voiceBackground); if (!canceled) {
         setResolvedBgs(Object.fromEntries(pairs));
         setVoiceBgResolved(bg || null);
-    } })(); return () => { canceled = true; }; }, [session.groupVideoBackgrounds, session.voiceBackground, globalCallAppearance]);
+    } })(); return () => { canceled = true; }; }, [liveCallAssets.groupVideoBackgrounds, liveCallAssets.voiceBackground, globalCallAppearance]);
     const queueUserText = useCallback((userText: string, kind: "speech" | "action" = "speech") => {
         const text = userText.trim();
         if (!text || !started || !["IDLE", "USER_SPEAKING"].includes(stateRef.current) || minimizedRef.current)
@@ -573,7 +576,7 @@ export function GroupCallScreen({ type, session, characters, onEnd, initiator = 
         const totalSlots = activeCharacters.length + 1; // +1 for self
         // Decide columns: 1 col for ≤2, 2 cols for ≤6, 3 cols for more
         const cols = totalSlots <= 2 ? 1 : totalSlots <= 6 ? 2 : 3;
-        return (<div className="gcall-video-root voicecall-controls call-keyboard-shift" style={keyboardOffsetStyle}>
+        return (<div className="gcall-video-root voicecall-controls call-keyboard-shift" data-call-visual={videoVisual.enabled?"video":undefined} style={{...keyboardOffsetStyle,...videoVisual.style}}>
                 {favoriteLine&&<VoiceFavoriteDialog key={favoriteLine.id} draft={{kind:"call",sourceKey:`${session.id}:group:${favoriteLine.id}`,text:originalCallSpeech(favoriteLine.text),characterId:favoriteLine.senderCharacterId||session.contactId,role:favoriteLine.role,getAudio:async()=>subtitleAudioCacheRef.current.get(favoriteLine.id)}} onClose={()=>setFavoriteLine(null)}/>}
                 <input type="file" accept="video/*" hidden ref={uploadFile039} onChange={e=>{void uploadThisVideo039(e.target.files?.[0]);e.target.value="";}}/>
                 {uploadNotice039&&<div className="call039-disclaimer"><section role="dialog" aria-modal="true" aria-label="视频素材使用须知">
@@ -592,7 +595,7 @@ export function GroupCallScreen({ type, session, characters, onEnd, initiator = 
                     {activeCharacters.map(char => {
                 const isSpeaking = speakingCharId === char.id;
                 const tileBg = resolvedBgs[char.id];
-                return (<div key={char.id} className="gcall-video-tile" style={tileBg ? { backgroundImage: `url(${tileBg})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined}>
+                return (<div key={char.id} className="gcall-video-tile" style={tileBg&&!videoVisual.enabled ? { backgroundImage: `url(${tileBg})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined}>{tileBg&&videoVisual.enabled&&<div className="chat-call-visual-background" aria-hidden="true" style={{backgroundImage:`url(${tileBg})`}}/>}
                                 {videos039[char.id]&&<video ref={el=>{if(el){uploadedVideoElements.current[char.id]=el;el.volume=uploadedVideoVolume;el.muted=uploadedVideoVolume===0;}else delete uploadedVideoElements.current[char.id];}} src={videos039[char.id]} className="call039-temp-video" autoPlay loop muted={uploadedVideoVolume===0} playsInline/>}
                                 {!tileBg && !videos039[char.id] && (groupMemberAvatar(char) ? (<img src={groupMemberAvatar(char) || ""} alt={groupMemberName(session, char.id, char)} className={`w-full h-full object-cover transition-opacity duration-300 ${callState === "CONNECTING" ? "gcall-video-avatar-dim" : "gcall-video-avatar-bright"}`}/>) : (<div className="gcall-video-tile-fallback">
                                         <span className="ts-40 opacity-60">{groupMemberName(session, char.id, char)?.[0] || "?"}</span>
@@ -603,7 +606,7 @@ export function GroupCallScreen({ type, session, characters, onEnd, initiator = 
             })}
 
                     {/* Self-cam tile */}
-                    <div className="gcall-video-tile-self" style={resolvedBgs["self"] ? { backgroundImage: `url(${resolvedBgs["self"]})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined}>
+                    <div className="gcall-video-tile-self" style={resolvedBgs["self"]&&!videoVisual.enabled ? { backgroundImage: `url(${resolvedBgs["self"]})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined}>{resolvedBgs["self"]&&videoVisual.enabled&&<div className="chat-call-visual-background" aria-hidden="true" style={{backgroundImage:`url(${resolvedBgs["self"]})`}}/>}
                         {cameraEnabled039&&<video ref={cameraVideo039} className="call039-temp-video" muted autoPlay playsInline/>}
                         {!resolvedBgs["self"] && (effectiveUserAvatar ? (<img src={effectiveUserAvatar} alt={userNameRef.current} className="w-full h-full object-cover"/>) : (<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity={0.5}>
                                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
@@ -657,7 +660,7 @@ export function GroupCallScreen({ type, session, characters, onEnd, initiator = 
     const selectedLines = subtitles.filter(line => line.role === "user" || line.senderCharacterId === selectedCharacter?.id);
     const deleteSubtitle = (id: string) => { if (callState !== "IDLE" || !subtitles.some(line => line.id === id && line.role === "assistant"))
         return; deleteChatMessagesByIds(session.id, [id]); messagesRef.current = messagesRef.current.filter(message => message.id !== id); subtitleAudioCacheRef.current.delete(id); setSubtitles(lines => lines.filter(line => line.id !== id)); };
-    return <div className="gcall-voice-cards voicecall-cards" style={voiceBgResolved ? { ...keyboardOffsetStyle, background: `url(${voiceBgResolved}) center/cover no-repeat` } : keyboardOffsetStyle}>{favoriteLine&&<VoiceFavoriteDialog key={favoriteLine.id} draft={{kind:"call",sourceKey:`${session.id}:group:${favoriteLine.id}`,text:originalCallSpeech(favoriteLine.text),characterId:favoriteLine.senderCharacterId || session.contactId,role:favoriteLine.role,getAudio:async()=>subtitleAudioCacheRef.current.get(favoriteLine.id)}} onClose={()=>setFavoriteLine(null)}/>}{callState !== "ENDED" && <SpeechFailureNotice failure={speechFailure} onClose={clearSpeechFailure} busy={callState !== "IDLE"}/>}<VoiceCallLayout name={selectedCharacter ? groupMemberName(session, selectedCharacter.id, selectedCharacter) : "通话成员"} avatar="" userName={groupMemberName(session, "self", null, userNameRef.current)} userAvatar={effectiveUserAvatar} lines={selectedLines} roundStart={roundStarts[selectedCharacter?.id || ""] || null} playingId={playingSubtitleId} state={callState} duration={formatTime(callDuration)} queued={queuedTurns} error={replyError} onClearError={() => setReplyError(null)} onMinimize={onMinimize} onSummon={() => void runConversationTurn()} onInput={() => setInputOpen(true)} onHangup={handleHangup} onAccept={() => setCallState("IDLE")} onDecline={() => endCall(true)} incoming={initiator === "character"} onPlay={line => { const subtitle = subtitles.find(item => item.id === line.id); if (subtitle)
+    return <div className="gcall-voice-cards voicecall-cards" data-call-visual={voiceVisual.enabled?"voice":undefined} style={voiceVisual.enabled?{...keyboardOffsetStyle,...voiceVisual.style}:voiceBgResolved ? { ...keyboardOffsetStyle, background: `url(${voiceBgResolved}) center/cover no-repeat` } : keyboardOffsetStyle}>{voiceVisual.enabled&&voiceBgResolved&&<div className="chat-call-visual-background" aria-hidden="true" style={{backgroundImage:`url(${voiceBgResolved})`}}/>}{favoriteLine&&<VoiceFavoriteDialog key={favoriteLine.id} draft={{kind:"call",sourceKey:`${session.id}:group:${favoriteLine.id}`,text:originalCallSpeech(favoriteLine.text),characterId:favoriteLine.senderCharacterId || session.contactId,role:favoriteLine.role,getAudio:async()=>subtitleAudioCacheRef.current.get(favoriteLine.id)}} onClose={()=>setFavoriteLine(null)}/>}{callState !== "ENDED" && <SpeechFailureNotice failure={speechFailure} onClose={clearSpeechFailure} busy={callState !== "IDLE"}/>}<VoiceCallLayout name={selectedCharacter ? groupMemberName(session, selectedCharacter.id, selectedCharacter) : "通话成员"} avatar="" userName={groupMemberName(session, "self", null, userNameRef.current)} userAvatar={effectiveUserAvatar} lines={selectedLines} roundStart={roundStarts[selectedCharacter?.id || ""] || null} playingId={playingSubtitleId} state={callState} duration={formatTime(callDuration)} queued={queuedTurns} error={replyError} onClearError={() => setReplyError(null)} onMinimize={onMinimize} onSummon={() => void runConversationTurn()} onInput={() => setInputOpen(true)} onHangup={handleHangup} onAccept={() => setCallState("IDLE")} onDecline={() => endCall(true)} incoming={initiator === "character"} onPlay={line => { const subtitle = subtitles.find(item => item.id === line.id); if (subtitle)
         void playSubtitle(subtitle); }} onFavorite={id=>setFavoriteLine(subtitles.find(line=>line.id===id)||null)} onDelete={deleteSubtitle} outputName={outputName} onOutput={() => { void selectCallAudioOutput().then(() => setOutputName("已选设备")).catch(error => setReplyError(error instanceof Error ? error.message : "请在系统中选择播放设备")); }} group={{ count: participantIds.length + 1, title: session.groupName || "群聊", selectedId: selectedCharacter?.id || "", avatars: avatarStrip, onMembers: () => setMembersOpen(true), positions: scrollPositions.current }} settings={<><CallVolumeControl /><p>点击头像切换台词 点击喇叭播放原文</p><p>输入后点击召唤生成回复</p></>} input={<>{membersDialog}{inputOpen && <div className="chat-call-dialog-backdrop chat-call-input-backdrop" onClick={() => setInputOpen(false)}><div className="chat-call-dialog chat-call-input-dialog" role="dialog" aria-modal="true" aria-label="通话输入" style={keyboardOffsetStyle} onClick={e => e.stopPropagation()}><header><strong>输入消息</strong><button aria-label="关闭输入" onClick={() => setInputOpen(false)}><X /></button></header><form onSubmit={e => { e.preventDefault(); handleTextSubmit(); }}><textarea autoFocus rows={3} value={typedText} onChange={e => setTypedText(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
         e.preventDefault();
         handleTextSubmit();

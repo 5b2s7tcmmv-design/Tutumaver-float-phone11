@@ -421,6 +421,7 @@ export function resolveMeetingInviteCardConfig(settings?: ChatAppSettings): Meet
 }
 
 export type ChatAppSettings = {
+    callVisualAppearance?: import('./chat-call-appearance').CallVisualSettings;
     globalAppBackground?: string; // base64 or URL
     /** 私聊内“我的头像”默认值；单独会话头像优先 */
     globalChatUserAvatar?: string;

@@ -13,6 +13,7 @@ import { getStatusRegionConfig, isCustomStatusRegionActive } from "@/lib/chat-st
 import { RotateCcw, Upload, Video, VideoOff, PhoneOff, MessageSquare, MessageSquareOff } from "lucide-react";
 import {Call039Transcript, type Call039Command} from "./call039-transcript";
 import type {Call039Line} from "./call039-shared-ui";
+import {VideoCallBackdrop,VideoCallSelfPicture,VideoCallInfo,VideoConnectedComposer,VideoConnectedButtons} from "./call-visual-shared";
 import { parseStateValues, mergeStateValues } from "@/lib/state-value-parser";
 import { parseAIResponse } from "@/lib/rich-message-parser";
 import { generateChatCompletion, flattenCompletionResult } from "@/lib/chat-engine";
@@ -22,6 +23,7 @@ import { createSTTSession, type STTSession } from "@/lib/stt-service";
 import { resolveVoiceConfig, resolveUserVoiceConfig, synthesizeSpeech, playAudioBlob, playAudioBlobViaMediaElement, setCallAudioSessionActive } from "@/lib/tts-service";
 import { isCallRecordingSupported, resolveCloudSttConfig } from "@/lib/stt-cloud";
 import { useHoldToTalk } from "./use-hold-to-talk";
+import {useCallVisual,useCallSessionVisual,useCallAsset} from "@/lib/chat-call-appearance";
 import { CallTranscriptBubble } from "./call-transcript-bubble";
 import { displayCallAction, originalCallSpeech, splitCallTranscript, VIDEO_CALL_FORMAT } from "@/lib/call-transcript";
 import type { Character } from "@/lib/character-types";
@@ -82,6 +84,7 @@ export function VideoCallScreen({ session, character, onEnd, onConnect, initiato
     const androidTextInputOnly = androidTextInputOnlyRef.current;
     const playCallAudio = useCallback((blob: Blob, onStart?: () => void) => iosDevice ? playAudioBlob(blob, onStart, true) : playAudioBlobViaMediaElement(blob, onStart, true), [iosDevice]);
     const keyboardOffsetStyle = useCallKeyboardOffsetStyle();
+    const callVisual=useCallVisual("video");
     const [callState, setCallState] = useState<CallState>(answered ? "IDLE" : "CONNECTING");
     const hasConnectedRef = useRef(false);
     const [callDuration, setCallDuration] = useState(0);
@@ -95,8 +98,9 @@ export function VideoCallScreen({ session, character, onEnd, onConnect, initiato
     const [inputMode, setInputMode] = useState<"voice" | "text">("text");
     const [typedText, setTypedText] = useState("");
     const [composeKind, setComposeKind] = useState<"speech" | "action">("speech");
-    const [bgImageResolved, setBgImageResolved] = useState<string | null>(null);
-    const [callAppearanceResolved, setCallAppearanceResolved] = useState<string | null>(null);
+    const liveCallAssets=useCallSessionVisual(session);
+    const bgImageResolved=useCallAsset(liveCallAssets.videoBackground);
+    const callAppearanceResolved=useCallAsset(liveCallAssets.callAppearance||globalCallAppearance);
     const [cameraEnabled, setCameraEnabled] = useState(false);
     const [cameraFacingMode, setCameraFacingMode] = useState<"user" | "environment">("user");
     const [cameraError, setCameraError] = useState<string | null>(null);
@@ -341,33 +345,7 @@ export function VideoCallScreen({ session, character, onEnd, onConnect, initiato
         }
     }, []);
 
-    // ── Resolve videoBackground from IndexedDB ──────
 
-    useEffect(() => {
-        if (!session.videoBackground) {
-            setBgImageResolved(null);
-            return;
-        }
-        if (session.videoBackground.startsWith("data:") || session.videoBackground.startsWith("http")) {
-            setBgImageResolved(session.videoBackground);
-            return;
-        }
-        import("@/lib/chat-asset-storage").then(({ getChatImageFromIndexedDB }) => {
-            getChatImageFromIndexedDB(session.videoBackground!).then(dataUrl => {
-                if (dataUrl) setBgImageResolved(dataUrl);
-            });
-        });
-    }, [session.videoBackground]);
-    useEffect(() => {
-        const reference = session.callAppearance || globalCallAppearance;
-        if (!reference) { setCallAppearanceResolved(null); return; }
-        if (/^(data:|https?:)/i.test(reference)) { setCallAppearanceResolved(reference); return; }
-        let cancelled = false;
-        import("@/lib/chat-asset-storage").then(({ getChatImageFromIndexedDB }) =>
-            getChatImageFromIndexedDB(reference).then(url => { if (!cancelled) setCallAppearanceResolved(url || null); })
-        );
-        return () => { cancelled = true; };
-    }, [session.callAppearance, globalCallAppearance]);
 
     // ── Call timer ───────────────────────────────────
 
@@ -769,7 +747,7 @@ export function VideoCallScreen({ session, character, onEnd, onConnect, initiato
     }
 
     return (
-        <div className="absolute inset-0 z-[100] flex flex-col bg-black text-white overflow-hidden call-keyboard-shift videocall-redesign" style={keyboardOffsetStyle}>
+        <div className="absolute inset-0 z-[100] flex flex-col bg-black text-white overflow-hidden call-keyboard-shift videocall-redesign" data-call-visual={callVisual.enabled?"video":undefined} style={{...keyboardOffsetStyle,...callVisual.style}}>
             {favoriteLine && <VoiceFavoriteDialog key={favoriteLine.id} draft={{kind:"call",sourceKey:`${session.id}:video:${favoriteLine.id}`,text:originalCallSpeech(favoriteLine.text),characterId:session.contactId,role:favoriteLine.role,getAudio:async()=>subtitleAudioCacheRef.current.get(favoriteLine.id)}} onClose={()=>setFavoriteLine(null)}/> }
             <UploadedVideoVolumeControl volume={uploadedVideoVolume} onChange={adjustUploadedVideoVolume} />
 
@@ -786,17 +764,7 @@ export function VideoCallScreen({ session, character, onEnd, onConnect, initiato
                     </svg>
                 </button>
             )}
-            {/* Full-screen blurred background (character avatar) */}
-            <div
-                className="videocall-bg-blur"
-                style={{
-                    backgroundImage: bgImageResolved
-                        ? `url(${bgImageResolved})`
-                        : callIdentity.avatar
-                            ? `url(${callIdentity.avatar})`
-                            : "linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)",
-                }}
-            />
+            <VideoCallBackdrop background={bgImageResolved} avatar={callIdentity.avatar}/>
 
             {callState !== "ENDED" && <SpeechFailureNotice failure={speechFailure} onClose={clearSpeechFailure} busy={callState !== "IDLE"}/>}
             {temporaryVideo039&&<video ref={el=>{uploadedVideoElement.current=el;if(el){el.volume=uploadedVideoVolume;el.muted=uploadedVideoVolume===0;}}} className="call039-temp-video" src={temporaryVideo039} autoPlay muted={uploadedVideoVolume===0} loop playsInline />}
@@ -807,39 +775,16 @@ export function VideoCallScreen({ session, character, onEnd, onConnect, initiato
               <h3>视频素材使用须知</h3><p>本功能展示的视频均由用户自行从本地选择，仅用于虚构视频通话场景的模拟与体验。{"\n\n"}视频画面及互动情节不代表现实人物的真实行为、言论或关系，请勿将虚构内容与现实人物关联，亦请勿上升真人。</p>
               <footer><button onClick={()=>setUploadNotice039(false)}>取消</button><button onClick={()=>{uploadApproved039.current=true;setUploadNotice039(false);temporaryVideoFile039.current?.click();}}>我已知晓，继续上传</button></footer>
             </section></div>}
-            {/* A single small self picture; the custom call background fills the rest of the screen. */}
-            <div className="videocall-self-cam" aria-label="我的通话画面">
-                {cameraEnabled ? (
-                    <video
+            <VideoCallSelfPicture src={callAppearanceResolved||effectiveUserAvatar} name={userNameRef.current}>
+                {cameraEnabled?(<video
                         autoPlay
                         playsInline
                         muted
                         ref={(el) => { if (el && el !== videoElRef.current) { videoElRef.current = el; if (cameraStreamRef.current) { el.srcObject = cameraStreamRef.current; el.play().catch(() => {}); } } }}
                         className="w-full h-full object-cover"
-                    />
-                ) : (callAppearanceResolved || effectiveUserAvatar) ? (
-                    <img src={callAppearanceResolved || effectiveUserAvatar || ""} alt={userNameRef.current} className="w-full h-full object-cover" />
-                ) : (
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--c-text)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                        <circle cx="12" cy="7" r="4" />
-                    </svg>
-                )}
-            </div>
-
-            {/* Top info bar */}
-            <div className="relative z-10 gcall-topbar gcall-topbar-video">
-                <div className="gcall-topbar-title videocall-name">
-                    {callIdentity.name}
-                </div>
-                <div
-                    className="gcall-topbar-sub videocall-name"
-                    {...(callState === "CONNECTING" || callState === "PROCESSING" ? { "data-anim": "" } : {})}
-                >
-                    {callState !== "CONNECTING" && callState !== "ENDED" ? `${formatTime(callDuration)} · ` : ""}
-                    {stateLabel()}
-                </div>
-            </div>
+                    />):null}
+            </VideoCallSelfPicture>
+            <VideoCallInfo name={callIdentity.name} label={(callState!=="CONNECTING"&&callState!=="ENDED"?`${formatTime(callDuration)} · `:"")+stateLabel()} animated={callState==="CONNECTING"||callState==="PROCESSING"}/>
 
             {transcriptVisible039&&<div className="call039-video-overlay" ref={subtitlesScrollRef}>
                 <Call039Transcript lines={subtitles.map(item=>({...item,kind:item.kind||"speech",speakerName:item.role==="user"?"我":callIdentity.name}))}
@@ -847,13 +792,7 @@ export function VideoCallScreen({ session, character, onEnd, onConnect, initiato
                     onEdit={call039Edit} onCommand={call039Command}/>
                 {interimText&&<div className="call-video-action">{interimText}</div>}
             </div>}
-            {transcriptVisible039&&callState!=="CONNECTING"&&callState!=="ENDED"&&<div className="call039-voice-compose">
-                <button type="button" className="call039-kind" onClick={()=>setComposeKind(k=>k==="speech"?"action":"speech")} aria-label="切换语言和动作">{composeKind==="speech"?"语":"动"}</button>
-                <input value={typedText} onChange={e=>setTypedText(e.target.value)}
-                  onKeyDown={e=>{if(e.key==="Enter"&&!e.nativeEvent.isComposing&&!e.shiftKey){e.preventDefault();handleTextSubmit();}}}
-                  placeholder={composeKind==="speech"?"输入你想说的话，回车发送…":"输入动作，回车发送…"} disabled={callState!=="IDLE"}/>
-                <button type="button" onClick={handleRegenerate} disabled={callState!=="IDLE"} aria-label="召唤角色继续">↑</button>
-            </div>}
+            {transcriptVisible039&&callState!=="CONNECTING"&&callState!=="ENDED"&&<VideoConnectedComposer kind={composeKind} draft={typedText} busy={callState!=="IDLE"} onKind={()=>setComposeKind(k=>k==="speech"?"action":"speech")} onDraft={setTypedText} onSend={()=>handleTextSubmit()} onSummon={()=>handleRegenerate()}/>}
             {cameraError && (
                 <div className="videocall-toast" role="status" aria-live="polite">{cameraError}</div>
             )}
@@ -877,9 +816,7 @@ export function VideoCallScreen({ session, character, onEnd, onConnect, initiato
                     <button type="button" className="hang" onClick={()=>onEnd()} aria-label="拒接"><PhoneOff size={25}/></button>
                     <button type="button" onClick={()=>setCallState("IDLE")} aria-label="接听"><Video size={24}/></button>
                 </> : callState!=="CONNECTING"&&callState!=="ENDED" ? <>
-                    <button type="button" onClick={handleCameraToggle} aria-label={cameraEnabled?"关闭摄像头":"打开摄像头"}>{cameraEnabled?<Video size={24}/>:<VideoOff size={24}/>}</button>
-                    <button type="button" className="hang" onClick={handleHangup} aria-label="挂断"><PhoneOff size={28}/></button>
-                    <button type="button" onClick={()=>setTranscriptVisible039(x=>!x)} aria-label={transcriptVisible039?"隐藏对话和输入":"显示对话和输入"}>{transcriptVisible039?<MessageSquare size={24}/>:<MessageSquareOff size={24}/>}</button>
+                    <VideoConnectedButtons camera={cameraEnabled} visible={transcriptVisible039} onCamera={()=>handleCameraToggle()} onHangup={handleHangup} onVisibility={()=>setTranscriptVisible039(x=>!x)}/>
                 </> : <button className="hang" onClick={()=>onEnd()} aria-label="取消呼叫"><PhoneOff size={28}/></button>}
             </div>
             {!androidTextInputOnly && showSttWarning && (

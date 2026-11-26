@@ -19,6 +19,7 @@ import { cancelFollowUp } from "@/lib/follow-up-service";
 import { resolveVoiceConfig, resolveUserVoiceConfig, synthesizeSpeech, playAudioBlob, playAudioBlobViaMediaElement, setCallAudioSessionActive, selectCallAudioOutput } from "@/lib/tts-service";
 import { callRetryRange, originalCallSpeech, splitCallTranscript, VOICE_CALL_FORMAT } from "@/lib/call-transcript";
 import type { Character } from "@/lib/character-types";
+import {useCallVisual,useCallSessionVisual,useCallAsset} from "@/lib/chat-call-appearance";
 import { useCallKeyboardOffsetStyle } from "./use-call-keyboard-offset";
 import { isIOSDevice } from "./voice-input-platform";
 import { CallVolumeControl } from "./call-volume-control";
@@ -64,6 +65,7 @@ export function VoiceCallScreen({ session, character, onEnd, onConnect, initiato
     const iosDevice = isIOSDevice();
     const playCallAudio = useCallback((blob: Blob, onStart?: () => void) => iosDevice ? playAudioBlob(blob, onStart, true) : playAudioBlobViaMediaElement(blob, onStart, true), [iosDevice]);
     const keyboardOffsetStyle = useCallKeyboardOffsetStyle();
+    const callVisual=useCallVisual("voice");
     const [callState, setRawCallState] = useState<CallState>(answered ? "IDLE" : "CONNECTING");
     const hasConnectedRef = useRef(false);
     const [callDuration, setCallDuration] = useState(0);
@@ -78,7 +80,8 @@ export function VoiceCallScreen({ session, character, onEnd, onConnect, initiato
     const [playingSubtitleId, setPlayingSubtitleId] = useState<string | null>(null);
     const [interimText, setInterimText] = useState("");
     const [typedText, setTypedText] = useState("");
-    const [bgImageResolved, setBgImageResolved] = useState<string | null>(null);
+    const liveCallAssets=useCallSessionVisual(session);
+    const bgImageResolved=useCallAsset(liveCallAssets.voiceBackground);
     const [replyError, setReplyError] = useState<string | null>(null);
     const { speechFailure, clearSpeechFailure, reportSpeechFailure } = useSpeechFailure();
 
@@ -139,25 +142,6 @@ export function VoiceCallScreen({ session, character, onEnd, onConnect, initiato
         };
     }, []);
     useEffect(() => { interimTextRef.current = interimText; }, [interimText]);
-
-    // ── Resolve voiceBackground from IndexedDB ──────
-
-    useEffect(() => {
-        if (!session.voiceBackground) {
-            setBgImageResolved(null);
-            return;
-        }
-        if (session.voiceBackground.startsWith("data:") || session.voiceBackground.startsWith("http")) {
-            setBgImageResolved(session.voiceBackground);
-            return;
-        }
-        // IndexedDB ID
-        import("@/lib/chat-asset-storage").then(({ getChatImageFromIndexedDB }) => {
-            getChatImageFromIndexedDB(session.voiceBackground!).then(dataUrl => {
-                if (dataUrl) setBgImageResolved(dataUrl);
-            });
-        });
-    }, [session.voiceBackground]);
 
     // ── Call timer ───────────────────────────────────
 
@@ -466,7 +450,8 @@ export function VoiceCallScreen({ session, character, onEnd, onConnect, initiato
         setCallState("ENDED"); generationRef.current?.abort();
         pushChatMessage({ sessionId: session.id, role: "user", content: initiator === "character" ? "[我拒绝了语音通话]" : "[我取消了语音通话]" }); onEnd();
     };
-    return <div className="absolute inset-0 z-[100] overflow-hidden voicecall-dark voicecall-cards" style={bgImageResolved ? { ...keyboardOffsetStyle, background: `url(${bgImageResolved}) center/cover no-repeat` } : keyboardOffsetStyle}>
+    return <div className="absolute inset-0 z-[100] overflow-hidden voicecall-dark voicecall-cards" data-call-visual={callVisual.enabled?"voice":undefined} style={callVisual.enabled?{...keyboardOffsetStyle,...callVisual.style}:bgImageResolved ? { ...keyboardOffsetStyle, background: `url(${bgImageResolved}) center/cover no-repeat` } : keyboardOffsetStyle}>
+        {callVisual.enabled&&bgImageResolved&&<div className="chat-call-visual-background" aria-hidden="true" style={{backgroundImage:`url(${bgImageResolved})`}}/>}
         <>
         {favoriteLine && <VoiceFavoriteDialog key={favoriteLine.id} draft={{kind:"call",sourceKey:`${session.id}:voice:${favoriteLine.id}`,text:originalCallSpeech(favoriteLine.text),characterId:session.contactId,role:favoriteLine.role,getAudio:async()=>subtitleAudioCacheRef.current.get(favoriteLine.id)}} onClose={()=>setFavoriteLine(null)}/> }
         {callState !== "ENDED" && <SpeechFailureNotice failure={speechFailure} onClose={clearSpeechFailure} busy={callState !== "IDLE"}/>}
