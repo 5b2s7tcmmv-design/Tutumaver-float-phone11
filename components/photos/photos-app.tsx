@@ -1106,27 +1106,12 @@ export function PhotosApp({ onClose, onNotice }: Props) {
                 ) : null}
               </div>
               <label>
-                <span>媒体来源</span>
-                <select value={preferences.importedStrategy} onChange={(event) => updateStrategy(event.target.value as PhotoSourceStrategy)}>
-                  <option value="album_only">仅匹配相册 · 缺图拒绝</option>
-                  <option value="album_then_generated">先匹配 · 缺图可手动生图</option>
-                </select>
-              </label>
-              <label>
                 <span>解析调试</span>
                 <select value={preferences.resolverDebug ? "on" : "off"} onChange={(event) => setPhotoLibraryPreferences({ resolverDebug: event.target.value === "on" })}>
                   <option value="off">关闭</option>
                   <option value="on">开启</option>
                 </select>
               </label>
-            </details>
-            <details className="photos-import-card photos-disclosure"><summary>管理可用角色相册</summary>
-              <div className="photos-library-summary"><strong>引入角色</strong><span>{preferences.enabledCharacterIds.length}/{characters.length}</span></div>
-              <p>未引入的角色在所有 App 都沿用文字图片描述与手动生图。</p>
-              {characters.map((character) => <div className="photos-import-row" key={character.id}>
-                <CharacterAvatar character={character} size={36} /><span>{character.name}</span>
-                <Toggle checked={preferences.enabledCharacterIds.includes(character.id)} onChange={() => toggleImport("enabledCharacterIds", character.id)} label={`引入 ${character.name} 相册`} />
-              </div>)}
             </details>
             {photos.length > 0 ? (
               <div className="photos-library-summary">
