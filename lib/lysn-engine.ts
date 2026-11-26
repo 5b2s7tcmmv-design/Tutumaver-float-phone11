@@ -38,7 +38,7 @@ export async function generateLysn(characterId: string, history: LysnMessage[], 
   const slot = resolveBinding(loadBindingConfig(), characterId, "lysn");
   const api = loadApiConfigs().find(x => x.id === slot.apiConfigId) || loadApiConfigs()[0];
   if (!api) throw new Error("请先为 Lysn 配置可用的文字 API。");
-  const presets = loadPresets();
+  const presets = loadPresets(characterId);
   const preset = presets.find(x => x.id === slot.presetId) || presets.find(x => x.builtIn) || null;
   const worldBooks = (slot.worldBookIds || []).map(id => loadWorldBooks().find(x => x.id === id)).filter(Boolean) as WorldBookConfig[];
   const regexes = (slot.regexIds || []).map(id => loadRegexes().find(x => x.id === id)).filter(Boolean) as RegexConfig[];
@@ -48,7 +48,7 @@ export async function generateLysn(characterId: string, history: LysnMessage[], 
   const stickers = (room?.stickerPacks || []).flatMap(p => p.stickers).filter(s => s.name.trim() && s.imageUrl);
   const album = loadPhotoLibrary();
   const imported = album.preferences.enabledCharacterIds.includes(characterId);
-  const photoStrategy = imported ? getPhotoSourceStrategy("bubble") : "generated_only";
+  const photoStrategy = imported ? getPhotoSourceStrategy("bubble",characterId) : "generated_only";
   const photoChoices = album.photos.filter(p => (imported || p.origin === "generated") && p.linkedCharacterIds.includes(characterId) && p.aiUsable && hasPhotoMatchDescription(p) && canAutoUsePhoto(p, characterId, "bubble")).slice(-20);
   // Cognition is private; the channel audience remains anonymous.
   const normalBroadcast = mode === "new" || mode === "reply";
