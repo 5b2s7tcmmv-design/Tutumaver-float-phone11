@@ -1,8 +1,8 @@
 "use client";
 import {TextImage} from "@/components/media/text-image";
 import { GroupShareTargets } from "@/components/chat/group-share-targets";
-import {openSharedChatSession} from '@/lib/chat-notification-events';
 
+import { openSharedChatSession } from '@/lib/chat-notification-events';
 import { resolveChatShareSession } from '@/lib/chat-share-targets';
 
 import {useSnapshotNavigation} from "@/lib/shared-snapshot-navigation";
@@ -16,7 +16,7 @@ import { ensureSettingsStorageHydrated } from "@/lib/settings-storage";
 import { hydrateKvDb } from "@/lib/kv-db";
 import { migrateLegacyTheqooTranslator } from "@/lib/theqoo-translation-migration";
 import { loadCharacters } from "@/lib/character-storage";
-import { createOrGetSession, pushChatMessage } from "@/lib/chat-storage";
+import { pushChatMessage } from "@/lib/chat-storage";
 import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
 import { isMediaStoreRef, loadMediaObjectUrl } from "@/lib/media-cache-storage";
 import { getChatImageFromIndexedDB, saveChatImageToIndexedDB } from "@/lib/chat-asset-storage";
@@ -416,9 +416,9 @@ export function TheqooApp({ onClose, onNotice: externalNotice, visible = true, o
 
   const shareTo = (characterId: string) => {
     if (!selected) return;
-    const session = createOrGetSession(characterId);
-    const snapshot = { ...selected, images: imagesOf(selected).map(image => ({ ...image })), imageRef: undefined, comments: selected.comments.map(c => ({ ...c })), translationMode: state.translationMode, translationEnabled: state.translationEnabled };
-    const comments = [...snapshot.comments].sort((a, b) => b.original.length - a.original.length).slice(0, 5);
+    const session = resolveChatShareSession(characterId);
+    const snapshot = { ...selected, images: imagesOf(selected).map(image => ({ ...image })), imageRef: undefined, comments: selected.comments.slice(0, 10).map(c => ({ ...c })), translationMode: state.translationMode, translationEnabled: state.translationEnabled };
+    const comments = snapshot.comments;
     const bilingualHeader = state.translationEnabled
       ? `原文标题：${selected.titleOriginal}\n中文标题：${selected.titleTranslated}\n原文正文：${selected.bodyOriginal}\n中文正文：${selected.bodyTranslated}`
       : `标题：${selected.titleTranslated || selected.titleOriginal}\n正文：${selected.bodyTranslated || selected.bodyOriginal}`;
@@ -592,7 +592,7 @@ export function TheqooApp({ onClose, onNotice: externalNotice, visible = true, o
 
     {shareOpen && selected && <div className={styles.overlay} onClick={() => setShareOpen(false)}><div className={styles.dialog} onClick={e => e.stopPropagation()}>
       <div className={styles.dialogTitle}>{t("Chat으로 공유", "分享到 Chat")}<button onClick={() => setShareOpen(false)}><X size={20} /></button></div>
-      <div className={styles.recipientList}>{characters.map(char => <button key={char.id} onClick={() => shareTo(char.id)}>{char.name}<ChevronRight size={17} /></button>)}{!characters.length && <p>{t("연락처가 없습니다.", "还没有角色联系人。")}</p>}</div>
+      <GroupShareTargets onSelect={shareTo}/><div className={styles.recipientList}>{characters.map(char => <button key={char.id} onClick={() => shareTo(char.id)}>{char.name}<ChevronRight size={17} /></button>)}{!characters.length && <p>{t("연락처가 없습니다.", "还没有角色联系人。")}</p>}</div>
     </div></div>}
 
     {imageEditor && selected && <div className={styles.overlay} onClick={() => setImageEditor(false)}><div className={styles.dialog} onClick={e => e.stopPropagation()}>
