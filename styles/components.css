@@ -6135,3 +6135,11 @@
   font-size:calc(12px * var(--app-text-scale,1));}
 .error-diagnostics-status>span{color:var(--c-text);opacity:.75;}
 .error-diagnostics-status>strong{text-align:right;overflow-wrap:anywhere;font-weight:700;color:var(--c-text-title);}
+
+/* Center the quick configuration panel without moving the floating button. */
+.quick-action-panel-overlay:not(.error-diagnostics-overlay) {
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  box-sizing:border-box; padding: max(72px, calc(var(--safe-area-top, 48px) + 18px)) 12px 12px;
+  pointer-events:none;
+}
+.quick-action-panel-overlay:not(.error-diagnostics-overlay) > .quick-action-popover {pointer-events:auto;}

@@ -184,26 +184,14 @@ export function QuickActionFloat() {
             setPopoverPosition(null);
             return;
         }
-        const rect = layer.getBoundingClientRect();
-        const buttonRect = button.getBoundingClientRect();
-        const posAnchor = (draggingFloatingButton && floatingPosition)
-            ? floatingPosition
-            : (dockState.anchorPosition)
-                ? dockState.anchorPosition
-                : (floatingPosition ?? {
-                    left: buttonRect.left - rect.left,
-                    top: buttonRect.top - rect.top,
-                });
-        const width = Math.min(344, rect.width - 32);
-        const statusSafeTop = getStatusSafeTop(layer);
-        const estimatedHeight = Math.min(520, Math.max(240, rect.height - statusSafeTop - 12));
-        const left = posAnchor.left - width - 8;
-        const top = posAnchor.top - estimatedHeight - 8;
-        const maxTop = Math.max(statusSafeTop, rect.height - estimatedHeight - 12);
-        setPopoverPosition({
-            left: Math.min(Math.max(12, left), Math.max(12, rect.width - width - 12)),
-            top: Math.min(Math.max(statusSafeTop, top), maxTop),
-        });
+        const measure=()=>{
+            const rect=layer.getBoundingClientRect();
+            const width=Math.min(344,rect.width-24),safe=getStatusSafeTop(layer);
+            const height=Math.min(520,Math.max(120,rect.height-safe-24));
+            setPopoverPosition({left:Math.max(12,(rect.width-width)/2),top:safe+Math.max(8,(rect.height-safe-height)/2)});
+        };
+        measure();const observer=new ResizeObserver(measure);observer.observe(layer);return()=>observer.disconnect();
+
     }, [open, floatingPosition, dockState.anchorPosition, draggingFloatingButton]);
 
     const currentSlot: BindingSlot = useMemo(() => {
@@ -427,9 +415,6 @@ export function QuickActionFloat() {
         : inheritedWorldBookNames.length > 0
             ? `继承全局：${inheritedWorldBookNames.join("、")}`
             : "继承全局";
-    const popoverStyle: CSSProperties | undefined = popoverPosition
-        ? { left: popoverPosition.left, top: popoverPosition.top }
-        : undefined;
 
     const isDual = floatingDockEnabled && promptViewerEnabled && enabled;
     const isQuickPrimary = !isDual || dockState.primaryTool === "quick-action";
@@ -490,10 +475,10 @@ export function QuickActionFloat() {
             </button>
 
             {open ? (
-                <div
+                <div className="quick-action-panel-overlay"><div
                     className="quick-action-popover"
                     data-positioned={popoverPosition ? "" : undefined}
-                    style={popoverStyle}
+                    style={{position:"relative",left:"auto",top:"auto",right:"auto",bottom:"auto",width:"100%",maxWidth:344,maxHeight:"min(480px, 86%)"}}
                     role="dialog"
                     aria-label="快捷操作"
                     onClick={event => event.stopPropagation()}
@@ -638,7 +623,7 @@ export function QuickActionFloat() {
                             )}
                         </section>
                     </div>
-                </div>
+                </div></div>
             ) : null}
         </div>
     );
