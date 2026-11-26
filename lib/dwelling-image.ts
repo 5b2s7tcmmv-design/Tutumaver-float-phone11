@@ -101,10 +101,11 @@ export async function generateDwellingRoomImage(
         try {
             const availability = getDwellingImageAvailability(characterId);
             if (!availability.available) return { assetId: null, error: "生图未开启" };
-            const result = await generateImageFromConfiguredApi({userInitiated:true,
+            const result = await generateImageFromConfiguredApi({
                 description: buildRoomImagePrompt(room),
                 characterId,
                 appId: "dwelling",
+                omitCharacterReference: true,
                 signal: controller.signal,
             });
             if (!result) return { assetId: null, error: "生图未配置或已关闭" };

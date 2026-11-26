@@ -99,8 +99,8 @@ export function DwellingApp({ onClose, visible, onIdle }: DwellingAppProps) {
 
     useEffect(() => {
         // 用户可能中途去设置里配置了生图，回到栖所时重新判定
-        if (visible) setImageConfigured(getDwellingImageAvailability().configured);
-    }, [visible]);
+        if (visible !== false) setImageConfigured(getDwellingImageAvailability(activeCharId ?? undefined).configured);
+    }, [visible, activeCharId]);
 
     useEffect(() => {
         activeCharIdRef.current = activeCharId;
@@ -290,7 +290,7 @@ export function DwellingApp({ onClose, visible, onIdle }: DwellingAppProps) {
             return () => { cancelled = true; };
         }
 
-        if (imageEnabled && imageConfigured && !cs.generatingImageRooms.has(room.id) && !cs.imageErrors[room.id]) {
+        if (imageEnabled && getDwellingImageAvailability(activeCharId).available && !cs.generatingImageRooms.has(room.id) && !cs.imageErrors[room.id]) {
             void handleGenerateRoomImage(activeCharId, room.id);
         }
     }, [activeCharId, activeRoomIdx, imageEnabled, imageConfigured, visible, csForImage, roomForImage, handleGenerateRoomImage]);

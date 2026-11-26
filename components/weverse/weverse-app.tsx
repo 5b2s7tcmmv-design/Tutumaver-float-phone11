@@ -5,7 +5,7 @@ import { shareWeverseReplayToChat } from "@/lib/weverse-replay-share";
 import { useAppBack } from "@/lib/back-navigation";
 import { AppNotificationSetting } from "@/components/social/app-notifications";
 import {syncBilingualEdit,isForeignOriginal} from "@/lib/bilingual-edit";
-import {getWvsBackground,setWvsBackground} from "@/lib/weverse-background";
+import {getWvsBackground,setWvsBackground,getWvsBackgroundStartedAt} from "@/lib/weverse-background";
 import {calendarForWeverseProjection} from "@/lib/weverse-schedule-sync";
 import { hasPhotoMatchDescription } from "@/lib/photo-library-usage";
 import {calendarWallTimeToInstant} from "@/lib/calendar-time";
@@ -1218,7 +1218,7 @@ export function WeverseApp({ visible=true, onClose, onNotice: externalNotice }: 
     const timer = window.setInterval(() => {
       const now = Date.now();
       const background = loadWeverseState().lives.find(live => live.id === getWvsBackground() && !live.official && live.status === "live");
-      if (background && !liveGenerationRef.current && !background.endedAt && now - backgroundAdvanceAt.current > 30000
+      if (background && !liveGenerationRef.current && !background.endedAt && now - Math.max(backgroundAdvanceAt.current,getWvsBackgroundStartedAt()) >= 120000
           && Math.max(background.startedAt, ...background.segments.map(segment => segment.createdAt)) <= now) {
         const community = communityMap.get(background.communityId);
         if (community && !isPersonalWeverseCommunity(community)) {
@@ -2463,6 +2463,7 @@ export function WeverseApp({ visible=true, onClose, onNotice: externalNotice }: 
       userName={userName}
       busy={generatingLiveId === live.id}
       onBack={leavePage}
+      onExitWatching={() => { setWvsBackground(null); back(); }}
       onAdvance={() => void advanceLive(live)}
       onSendComment={body => sendLiveUserComment(live, body)}
       onHeart={() => addLiveHeart(live)}

@@ -767,7 +767,8 @@ function liveFormatRules(opening = false, liveType: "visual" | "voice" | "auto" 
         ? "本场类型尚未指定。请按角色当时状态自然选择 Video Live（visual）或 Voice Live（voice）；若选择 voice，所有 segment 必须为 speech，绝对不要输出 action 或画面描写。"
         : "这是 Video Live，使用横屏 Live Stage。不要讨论竖屏模板，也不要描述真实视频文件、编码、清晰度等技术细节。",
     "speech 使用该角色本人最自然的语言；若不是简体中文，同时给出简体中文 translated。",
-    liveType === "voice" ? "Voice Live 不输出动作。" : "visual 模式下 action 不是必填：只有角色真的发生了新的动作、姿态变化或环境操作时才输出；动作没变化就完全省略，禁止为了凑格式硬写。action 使用省略主语的现场描写，不写‘他/她/角色/姓名……’这类第三人称主语，不加括号，只写简体中文、不做双语。",
+    liveType === "voice" ? "Voice Live 不输出动作。" : "visual 模式下 action 为观众可见可听的非语言画面，使用简体中文，不做双语；speech 为实际说出口的语言。",
+    liveType === "voice" ? "" : contentPrompt("weverse.stage.role"),
     `粉丝留言要像真实直播间：在线人数远高于活跃发言人数，观众里可以有核心粉丝、普通关注者和路人。${fanLanguageRules(loadWeverseState().settings.fanLanguagePreset)[0]}不要人人都像资深粉丝。`,
     opening
       ? "开场留言以轻松即时反应为主，例如终于开播、爱你、今天好帅/可爱、最近吃什么、是不是瘦了胖了、最近在忙什么等；不要一上来全是深度问题。"
@@ -802,7 +803,7 @@ export async function generateWeverseLiveOpening(
           options?.opportunistic ? '这是刷新时的一次随性开播机会。结合本人心情、近期生活和世界线中的直播习惯决定现在是否想播；想播时返回shouldStart:true与开场，不想播时只返回{"shouldStart":false}。' : "按本人状态自然开播，延续世界线中设定的直播习惯。",
           theme ? `用户给了一个软主题：${theme}。这是方向，不是脚本；按人设自然发挥、允许跑题。` : "用户没有指定主题。请结合人设、近期经历、当前时间与状态，自然决定为什么突然开播以及想聊什么。",
           "开场先只让最初开播者自己在 Stage 上，不要立刻安排其他艺人连线。",
-          requestedLiveType === "voice" ? "生成本场直播标题、开场的 3~5 个短 speech segment 和 9~14 条初始观众留言。" : "生成本场直播标题、开场的 3~5 个短 segment（以说话为主；visual 模式只有确实出现新动作时才插入 action）和 9~14 条初始观众留言。",
+          requestedLiveType === "voice" ? "生成本场直播标题、开场的 3~5 个短 speech segment 和 9~14 条初始观众留言。" : "生成本场直播标题、开场的 3~5 个短 segment和 9~14 条初始观众留言。",
           `每个 segment 都可以带 characterId；当前只能是最初开播者 ${characterId}。`,
           requestedLiveType === "auto" ? "必须返回 liveType，值只能是 visual 或 voice；按人设和当时情境自然选择，不要永远固定一种。" : `liveType 固定为 ${requestedLiveType}。`,
           "只输出 JSON，不要 Markdown。格式：{\"liveType\":\"visual或voice\",\"title\":\"...\",\"segments\":[{\"kind\":\"speech\",\"characterId\":\"角色ID\",\"original\":\"角色原话\",\"translated\":\"中文翻译\"}],\"comments\":[{\"displayName\":\"...\",\"original\":\"...\",\"translated\":\"...\"}],\"shouldEnd\":false}",
@@ -871,7 +872,7 @@ export async function generateWeverseLiveContinuation(
           liveTranscriptContext(live, community, now.getTime()),
           [...currentActiveIds].map(id=>{const hints=liveInteractionHints(id,Math.max(live.startedAt,live.generatedThrough??live.segments.filter(s=>s.createdAt<=now.getTime()).at(-1)?.createdAt??live.startedAt),now.getTime());return hints?`${liveMemberName(community,id)}：${hints}（只体现实际手机动作，不公开私聊内容或身份）`:"";}).filter(Boolean).join("\n"),
           userComments.length ? `用户自上次推进后已经公开发到直播间的评论如下。可能带有共同社区艺人的公开署名，你不必逐条回应：\n${userComments.map((item, index) => `${index + 1}. ${item}`).join("\n")}` : "用户这一轮没有新的公开评论，只是在继续观看。",
-          "生成接下来的 2~5 个短 segment 和 7~12 条新普通观众留言。以说话为主；只有确实有新动作时才生成 action。",
+          "生成接下来的 2~5 个短 segment 和 7~12 条新普通观众留言。",
           "如果台词确实回复了一条已有评论，segment 的 replyToCommentIds 数组填写真实评论 ID。否则留空。",
           "每个 segment 必须尽量提供 characterId。speech 的 characterId 只能来自当前 Stage 角色或本轮 participantJoins。action 若属于某个角色也给 characterId。",
           "可以生成 0~2 条艺人评论；artistComments 里的角色不能是当前 Stage 角色。主播通常会更容易注意艺人评论并自然回应，但不是强制。",

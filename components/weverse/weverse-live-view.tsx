@@ -21,6 +21,7 @@ type Props = {
   userName: string;
   busy?: boolean;
   onBack: () => void;
+  onExitWatching?: () => void;
   onAdvance: () => void;
   onSendComment: (body: string) => void;
   onHeart: () => void;
@@ -58,7 +59,7 @@ function liveElapsed(startedAt: number, endAt: number): string {
   return `${String(min).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`;
 }
 
-export function WeverseLiveView({ isUserHost, isUserGuest, artistViewer, onLiveActions, onLeaveStage, generationFeedback, onHostSend, live, speakerNames, speakerAvatars, userName, busy, onBack, onAdvance, onSendComment, onHeart, onFinalizeEnd, onManualEnd }: Props) {
+export function WeverseLiveView({ isUserHost, isUserGuest, artistViewer, onLiveActions, onLeaveStage, generationFeedback, onHostSend, live, speakerNames, speakerAvatars, userName, busy, onBack, onExitWatching, onAdvance, onSendComment, onHeart, onFinalizeEnd, onManualEnd }: Props) {
   const [clock, setClock] = useState(() => Date.now());
   const [hostKind,setHostKind]=useState<"speech"|"action">("speech");
   const commentsFollow=useRef(true);
@@ -84,6 +85,11 @@ export function WeverseLiveView({ isUserHost, isUserGuest, artistViewer, onLiveA
   const voiceNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const commentBoxRef = useRef<HTMLDivElement>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
+  // Voice/comment sheets sit above the exit sheet, including for saved replays.
+  useAppBack(() => {
+    if (selectedVoiceSegmentId) setSelectedVoiceSegmentId(null);
+    else setArtistCommentsOpen(false);
+  }, () => !!(selectedVoiceSegmentId || artistCommentsOpen) && !!liveRootRef.current?.getClientRects().length, 30);
 
   useEffect(()=>{const fn=(event:Event)=>{if((event as CustomEvent).detail?.active){voiceRequestIdRef.current++;voicePlaybackRef.current?.abort();voicePlaybackRef.current=null;setPlayingVoiceSegmentId(null);}};window.addEventListener('chat-call-state',fn);return()=>window.removeEventListener('chat-call-state',fn);},[]);
   useEffect(() => {
@@ -358,8 +364,9 @@ export function WeverseLiveView({ isUserHost, isUserGuest, artistViewer, onLiveA
         <section className={styles.liveExitSheet}>
           <div className={styles.liveExitHandle} />
           <h3>退出直播？</h3>
-          <p>{isUserGuest ? "退出合播后，主持艺人会继续直播。" : "可以只退出页面并保留后台播放，或者直接结束本场直播。"}</p>
-          <button type="button" className={styles.liveExitKeepBtn} onClick={() => { setExitSheetOpen(false); (isUserGuest ? onLeaveStage : onBack)?.(); }}>{isUserGuest ? "退出合播" : "仅退出，保留后台播放"}</button>
+          <p>{isUserGuest ? "退出合播后，主持艺人会继续直播。" : "可以选择后台播放、退出观看，或者结束本场直播。"}</p>
+          <button type="button" className={styles.liveExitKeepBtn} onClick={() => { setExitSheetOpen(false); (isUserGuest ? onLeaveStage : onBack)?.(); }}>{isUserGuest ? "退出合播" : "后台播放"}</button>
+          {!isUserHost && !isUserGuest && onExitWatching && <button type="button" className={styles.liveExitKeepBtn} onClick={() => { setExitSheetOpen(false); onExitWatching(); }}>退出 · 艺人继续直播</button>}
           {!isUserGuest && <button type="button" className={styles.liveExitEndBtn} disabled={busy} onClick={() => { setExitSheetOpen(false); onManualEnd(); }}>结束直播</button>}
           <button type="button" className={styles.liveExitCancelBtn} onClick={() => setExitSheetOpen(false)}>取消</button>
         </section>

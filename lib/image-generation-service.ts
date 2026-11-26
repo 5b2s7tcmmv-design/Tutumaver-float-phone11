@@ -761,7 +761,8 @@ export async function generateImageFromConfiguredApi(params: {
   settings?: ImageGenerationSettings;
   signal?: AbortSignal;
 }): Promise<ImageGenerationResult | null> {
-  if(params.userInitiated !== true) return null;
+  // Dwelling is a room-image-first app; its existing room-entry flow intentionally generates automatically.
+  if(params.userInitiated !== true && params.appId !== "dwelling") return null;
 
   const storedSettings = params.settings ?? loadImageGenerationSettings();
   // 显式传入 settings 的配置测试/工具调用保持原样；正常业务调用才读取绑定。
