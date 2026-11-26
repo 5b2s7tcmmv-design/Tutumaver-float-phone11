@@ -316,12 +316,12 @@ const PRIMARY_DATA_MODULES: DataModuleDefinition[] = [
           "ai_phone_custom_app_tasks_v1",
           "ai_phone_custom_app_world_activations_v1",
           "ai_phone_custom_app_suggestions_v1",
-          "ai_phone_reality_bridge_rules_v1",
-          "ai_phone_reality_bridge_feed_v1",
-          "ai_phone_reality_bridge_settings_v1",
-          "ai_phone_reality_bridge_data_items_v1",
-          "ai_phone_reality_bridge_shortcut_actions_v1",
-          "ai_phone_reality_bridge_rule_runs_v1",
+
+
+
+
+
+
         ],
         prefixes: [
           "music-search-cache:",
