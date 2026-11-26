@@ -1,5 +1,6 @@
 import {kvGet,kvSet,registerDynamicPrefix} from './kv-db';
 import {jsonrepair} from 'jsonrepair';
+import {recordErrorDiagnostic} from './error-diagnostics';
 const PREFIX='rabbit_browser_collection_v1_';registerDynamicPrefix(PREFIX);
 export const BROWSER_UPDATED='rabbit-browser-collection-updated';
 export type Pairing='BG'|'BL'|'GL';
@@ -172,11 +173,25 @@ export async function generateBrowserVideos(owner:string,query:string,append=fal
  if(signal?.aborted)return;
  // Keep the existing role-only history/favorites validation below; it narrows fields at runtime.
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
- const parsed=parseBrowserResponse(raw,responseMeta) as Record<string,any>;
+ let parsed:Record<string,any>;
+ let items:BrowserVideo[];
+ try {
+ parsed=parseBrowserResponse(raw,responseMeta) as Record<string,any>;
  if(!Array.isArray(parsed.items))throw browserFailure('fields','网页内容结构不正确','缺少 items 数组。');
  if(parsed.items.length!==count)throw browserFailure('count','生成数量不符合要求，请重试','期望 '+count+' 条，实际返回 '+parsed.items.length+' 条。');
- const items:BrowserVideo[]=parsed.items.map((v:Record<string,unknown>,i:number)=>{if(!v||typeof v!=='object'||Array.isArray(v))throw browserFailure('fields','网页内容字段不完整','第 '+(i+1)+' 条不是有效对象。');const comments=v.comments as Record<string,unknown>[];if(!pairings.includes(v.pairing as Pairing)||!['title','titleZh','author','description','descriptionZh'].every(k=>typeof v[k]==='string'&&String(v[k]).trim())||!Array.isArray(v.tags)||!v.tags.every(t=>typeof t==='string')||!Array.isArray(comments)||comments.length<3||comments.length>5||comments.some(c=>!c||typeof c!=='object'||typeof c.author!=='string'||typeof c.text!=='string'||typeof c.translation!=='string'))throw browserFailure('fields','网页内容字段不完整','第 '+(i+1)+' 条的组合、标题、翻译或评论字段不符合要求。');return {id:'video-'+Date.now()+'-'+i,title:String(v.title),titleZh:String(v.titleZh),author:String(v.author),tags:(v.tags as string[]).slice(0,5),pairing:v.pairing as Pairing,duration:typeof v.duration==='string'?v.duration:'20:00',description:String(v.description),descriptionZh:String(v.descriptionZh),comments:comments.map((c,j)=>({id:'c'+j,author:String(c.author),text:String(c.text),translation:String(c.translation)}))}});
+ items=parsed.items.map((v:Record<string,unknown>,i:number)=>{if(!v||typeof v!=='object'||Array.isArray(v))throw browserFailure('fields','网页内容字段不完整','第 '+(i+1)+' 条不是有效对象。');const comments=v.comments as Record<string,unknown>[];if(!pairings.includes(v.pairing as Pairing)||!['title','titleZh','author','description','descriptionZh'].every(k=>typeof v[k]==='string'&&String(v[k]).trim())||!Array.isArray(v.tags)||!v.tags.every(t=>typeof t==='string')||!Array.isArray(comments)||comments.length<3||comments.length>5||comments.some(c=>!c||typeof c!=='object'||typeof c.author!=='string'||typeof c.text!=='string'||typeof c.translation!=='string'))throw browserFailure('fields','网页内容字段不完整','第 '+(i+1)+' 条的组合、标题、翻译或评论字段不符合要求。');return {id:'video-'+Date.now()+'-'+i,title:String(v.title),titleZh:String(v.titleZh),author:String(v.author),tags:(v.tags as string[]).slice(0,5),pairing:v.pairing as Pairing,duration:typeof v.duration==='string'?v.duration:'20:00',description:String(v.description),descriptionZh:String(v.descriptionZh),comments:comments.map((c,j)=>({id:'c'+j,author:String(c.author),text:String(c.text),translation:String(c.translation)}))}});
  if(role&&(!Array.isArray(parsed.searchHistory)||parsed.searchHistory.length<5||parsed.searchHistory.length>8||parsed.searchHistory.some((q:unknown)=>typeof q!=='string'||!q.trim())||!Array.isArray(parsed.favoriteIds)||parsed.favoriteIds.length>2||parsed.favoriteIds.some((id:unknown)=>typeof id!=='string'||!candidates.some(v=>v.id===id))||(!current.items.length&&(!Array.isArray(parsed.favoriteIndexes)||parsed.favoriteIndexes.length>2||parsed.favoriteIndexes.some((i:unknown)=>!Number.isInteger(i)||Number(i)<0||Number(i)>=items.length)))))throw browserFailure('fields','角色浏览记录字段不完整','搜索历史或收藏索引不符合要求。');
+
+ } catch(error) {
+   recordErrorDiagnostic({
+     operation:role?'查手机 → 浏览器 → 生成记录':'浏览器 → 生成记录',
+     category:'parse',error,
+     expectedFormat:'JSON 对象：items 数组；每条包含标题、翻译、标签、评论等必需字段；角色记录还要求 searchHistory、favoriteIds 等字段',
+     actualReturn:raw,
+     parseFailure:error instanceof Error?error.message:String(error),
+   });
+   throw error;
+ }
  // Dedicated translation APIs are opt-in per Browser app, preserving existing model
  // translations when no translator is bound or a translator request fails.
  const browserAppId=role?'checkphone_browser':'browser';
@@ -196,5 +211,8 @@ export async function generateBrowserVideos(owner:string,query:string,append=fal
  const selected:BrowserVideo[]=role?(current.items.length?candidates.filter(v=>parsed.favoriteIds.includes(v.id)):items.filter((_,i)=>parsed.favoriteIndexes.includes(i))):[];
  // Respect deletions and manual saves performed while the request was running.
  const eligible=selected.filter(v=>!(latest.blockedFavoriteIds||[]).includes(v.id)&&(current.items.length?latest.items.some(x=>x.id===v.id):true));
- saveBrowserCollection(owner,{...latest,items:append?[...latest.items,...items]:items,favorites:role?mergeRoleFavorites(latest.favorites,eligible):latest.favorites,history:role?[...new Set(parsed.searchHistory as string[])]:query?[query,...latest.history.filter(q=>q!==query)].slice(0,50):latest.history,generatedAt:new Date().toISOString()});return items;
+ saveBrowserCollection(owner,{...latest,items:append?[...latest.items,...items]:items,favorites:role?mergeRoleFavorites(latest.favorites,eligible):latest.favorites,history:role?[...new Set(parsed.searchHistory as string[])]:query?[query,...latest.history.filter(q=>q!==query)].slice(0,50):latest.history,generatedAt:new Date().toISOString()});
+ recordErrorDiagnostic({operation:role?"API · checkphone_browser":"API · browser",succeeded:true});
+ recordErrorDiagnostic({operation:role?"查手机 → 浏览器 → 生成记录":"浏览器 → 生成记录",succeeded:true});
+ return items;
 }

@@ -124,7 +124,7 @@ const MUSIC_CONTROL_USAGE_GUIDE = [
     "【优先规则·重要】",
     "- 想放某首歌 → 直接一步调「播放音乐」(传 query 即可)，禁止先调「查看音乐状态/音乐库概览/歌单歌曲」等查看动作来'勘察'。「播放音乐」自带搜索，无需任何前置查看。",
     "- 「查看××」这几个动作只在{{user}}明确问起时才用：问'我有哪些歌/歌单'→查看音乐库概览；问'现在放的是什么'→查看音乐状态。平时放歌一律不用。",
-    "- 想直接放给{{user}}听 → 用「播放音乐」工具（真的会在 ta 手机上响起）；只有想'安利/推荐一首歌但不打断当前播放'时，才用 [音乐分享:歌名] 发卡片。{{user}}让你放歌时，默认用工具直接播放，不要只发分享卡片。",
+    "- 想直接放给{{user}}听 → 用「播放音乐」工具（真的会在 ta 手机上响起）；只有想'安利/推荐一首歌但不打断当前播放'时，才用 [音乐分享:歌名|歌手] 发卡片。{{user}}让你放歌时，默认用工具直接播放，不要只发分享卡片。",
     "- {{user}}邀请你一起听，或你想主动邀请时，调用「开始一起听」；结束时用「结束一起听」。这会连接现有 Music 播放器和灵动岛。一起听时直接用播放音乐/切换音乐点歌换歌；角色主动换歌至少相隔 3 分钟，用户明确要求时可传 requestedByUser=true。不要虚构双方真实设备同步或距离。",
     "",
     "动作：播放音乐",
@@ -1100,13 +1100,13 @@ const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
 ];
 
 export function loadInternalCapabilities(): InternalCapabilityConfig[] {
-    if (typeof window === "undefined") return BUILTIN_INTERNAL_CAPABILITIES.filter(item=>item.id!=="note_wall_service").map(item => ({ ...item }));
+    if (typeof window === "undefined") return BUILTIN_INTERNAL_CAPABILITIES.filter(item=>item.id!=="reality_bridge_send" && item.id!=="note_wall_service").map(item => ({ ...item }));
     try {
         const raw = kvGet(INTERNAL_CAPABILITIES_KEY);
         const items: InternalCapabilityConfig[] = raw ? JSON.parse(raw) : [];
-        return ensureBuiltinInternalCapabilities(items).filter(item=>item.id!=="note_wall_service");
+        return ensureBuiltinInternalCapabilities(items).filter(item=>item.id!=="reality_bridge_send" && item.id!=="note_wall_service");
     } catch {
-        return ensureBuiltinInternalCapabilities([]).filter(item=>item.id!=="note_wall_service");
+        return ensureBuiltinInternalCapabilities([]).filter(item=>item.id!=="reality_bridge_send" && item.id!=="note_wall_service");
     }
 }
 
@@ -1122,7 +1122,7 @@ export function getInternalCapability(id: string): InternalCapabilityConfig | nu
 export function getEnabledInternalCapabilities(appId?: string): InternalCapabilityConfig[] {
     if (appId !== "chat" && appId !== "group_chat") return [];
     return loadInternalCapabilities().filter(item => {
-        if (item.id === MUSIC_CONTROL_CAPABILITY_ID && appId === "chat" && activeListenSession()) return true;
+        if (item.id === MUSIC_CONTROL_CAPABILITY_ID) return appId === "chat" && !!activeListenSession();
         if (!item.enabled || item.mode === "off") return false;
         // 角色电脑是可插拔模块：没连接就不注入，模型完全看不见
         if (item.id === AGENT_COMPUTER_CAPABILITY_ID && !isAgentComputerConfigured()) return false;

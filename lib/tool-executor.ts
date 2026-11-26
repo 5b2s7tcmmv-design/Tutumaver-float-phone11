@@ -1566,7 +1566,7 @@ async function executeToolboxManagementTool(call: ToolCall): Promise<ToolResult>
 
 async function executeMusicControlTool(call: ToolCall, context?: ToolExecutionContext): Promise<ToolResult> {
     const capability = getInternalCapability(MUSIC_CONTROL_CAPABILITY_ID);
-    if (!capability || ((!capability.enabled || capability.mode === "off") && !(context?.appId === "chat" && context.characterId && activeListenSession()?.characterId === context.characterId))) {
+    if (!capability || context?.appId !== "chat" || !context.characterId || activeListenSession()?.characterId !== context.characterId) {
         return {
             name: call.name,
             success: false,
