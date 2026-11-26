@@ -527,7 +527,7 @@ export function BindingManager() {
         switch (field) {
             case "memorySummaryApiConfigId": return "用于聊天记忆压缩";
             case "embeddingApiConfigId": return "用于语义向量召回";
-            case "photoVisionApiConfigId": return "仅用于 Photos 导入、批量与重新识图；所选 API 需开启图像识别";
+            case "photoVisionApiConfigId": return "用于相册识图及线下手动识图；所选 API 需开启图像识别";
             case "mascotApiConfigId": return "用于小卷对话与工具调用";
             case "reasoningTranslateApiConfigId": return "用于翻译思考过程（思维链）内容";
             case "qaApiConfigId": return "用于工坊答疑、诊断与内容开发";
