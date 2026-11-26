@@ -1,4 +1,5 @@
 "use client";
+import {bubbleContextAnchor,placeChatContextMenu,type ContextMenuAnchor} from "./chat-context-menu-position";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
@@ -51,10 +52,7 @@ type MascotChatRoomProps = {
     onDeleted?: () => void;
 };
 
-type ContextMenuAnchor = {
-    x: number;
-    y: number;
-};
+
 
 const MASCOT_INITIAL_VISIBLE_MESSAGE_COUNT = 20;
 const MASCOT_LOAD_MORE_MESSAGE_COUNT = 20;
@@ -478,7 +476,7 @@ export function MascotChatRoom({ onBack, onDeleted }: MascotChatRoomProps) {
     const loadMoreRestoreRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
     const stickToBottomRef = useRef(true);
     const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const longPressStartRef = useRef<ContextMenuAnchor | null>(null);
+    const longPressStartRef = useRef<{x:number;y:number} | null>(null);
     const longPressTriggeredRef = useRef(false);
     const identity = useMemo(() => resolveUserIdentity(), []);
     useChatBottomReserve(wrapperRef, scrollRef, `${showEmojiPanel}:${pendingImages.length}`);
@@ -743,13 +741,13 @@ export function MascotChatRoom({ onBack, onDeleted }: MascotChatRoomProps) {
         if (event.pointerType === "mouse" && event.button !== 0) return;
         event.preventDefault();
         event.stopPropagation();
-        const anchor = { x: event.clientX, y: event.clientY };
-        longPressStartRef.current = anchor;
+        const node = event.currentTarget as HTMLElement;
+        longPressStartRef.current = { x: event.clientX, y: event.clientY };
         longPressTriggeredRef.current = false;
         if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
         longPressTimerRef.current = setTimeout(() => {
             longPressTriggeredRef.current = true;
-            openMascotContextMenu(rawIndex, anchor);
+            if (node.isConnected) openMascotContextMenu(rawIndex, bubbleContextAnchor(node));
             longPressTimerRef.current = null;
         }, 500);
     }, [chat.isThinking, openMascotContextMenu]);
@@ -774,45 +772,9 @@ export function MascotChatRoom({ onBack, onDeleted }: MascotChatRoomProps) {
         if (dx > 10 || dy > 10) cancelMascotLongPress();
     }, [cancelMascotLongPress]);
 
-    const getContextMenuInitialStyle = useCallback((): CSSProperties => {
-        if (!contextMenuAnchor) return { left: 0, top: 0 };
-        return { left: contextMenuAnchor.x, top: Math.max(8, contextMenuAnchor.y - 70) };
-    }, [contextMenuAnchor]);
-
+    const getContextMenuInitialStyle = useCallback((): CSSProperties => ({left:0,top:0}), []);
     const positionFloatingContextMenu = useCallback((el: HTMLDivElement | null) => {
-        if (!el || !contextMenuAnchor) return;
-        const margin = 8;
-        const gap = 12;
-        const menuW = el.offsetWidth;
-        const menuH = el.offsetHeight;
-        const viewportW = window.innerWidth;
-        const viewportH = window.innerHeight;
-        let left = contextMenuAnchor.x - menuW / 2;
-        left = Math.max(margin, Math.min(left, viewportW - menuW - margin));
-        const placeBelow = contextMenuAnchor.y - menuH - gap < margin;
-        let top = placeBelow ? contextMenuAnchor.y + gap : contextMenuAnchor.y - menuH - gap;
-        top = Math.max(margin, Math.min(top, viewportH - menuH - margin));
-        el.style.left = `${left}px`;
-        el.style.top = `${top}px`;
-        el.style.right = "auto";
-        el.style.bottom = "auto";
-        const tri = el.querySelector("[data-menu-triangle]") as HTMLElement | null;
-        if (!tri) return;
-        const triLeft = Math.max(14, Math.min(contextMenuAnchor.x - left, menuW - 14));
-        tri.style.left = `${triLeft}px`;
-        tri.style.right = "auto";
-        tri.style.transform = "translateX(-50%)";
-        if (placeBelow) {
-            tri.style.top = "-6px";
-            tri.style.bottom = "auto";
-            tri.style.borderTop = "none";
-            tri.style.borderBottom = "6px solid var(--ctx-menu-bg, #2c2c2c)";
-        } else {
-            tri.style.top = "auto";
-            tri.style.bottom = "-6px";
-            tri.style.borderBottom = "none";
-            tri.style.borderTop = "6px solid var(--ctx-menu-bg, #2c2c2c)";
-        }
+        placeChatContextMenu(el, contextMenuAnchor, wrapperRef.current);
     }, [contextMenuAnchor]);
 
     const handleCopyMascotMessage = useCallback((rawIndex: number) => {
@@ -1014,7 +976,7 @@ export function MascotChatRoom({ onBack, onDeleted }: MascotChatRoomProps) {
             <div
                 ref={scrollRef}
                 className="page-body chat-room-main-pane flex flex-col gap-4 chat-scroll-anchored"
-                onScroll={updateMascotStickToBottom}
+                onScroll={() => { updateMascotStickToBottom(); if (activeMascotMessageIndex !== null) closeMascotContextMenu(); }}
                 onPointerDown={() => {
                     if (showEmojiPanel) setShowEmojiPanel(false);
                     if (activeMascotMessageIndex !== null) closeMascotContextMenu();
@@ -1052,7 +1014,7 @@ export function MascotChatRoom({ onBack, onDeleted }: MascotChatRoomProps) {
                                     onContextMenu={(event) => {
                                         event.preventDefault();
                                         event.stopPropagation();
-                                        openMascotContextMenu(rawIndex, { x: event.clientX, y: event.clientY });
+                                        openMascotContextMenu(rawIndex, bubbleContextAnchor(event.currentTarget as HTMLElement));
                                     }}
                                     {...(activeMascotMessageIndex === rawIndex ? { "data-active": "" } : {})}
                                 >
@@ -1081,7 +1043,7 @@ export function MascotChatRoom({ onBack, onDeleted }: MascotChatRoomProps) {
                                     onContextMenu={(event) => {
                                         event.preventDefault();
                                         event.stopPropagation();
-                                        openMascotContextMenu(rawIndex, { x: event.clientX, y: event.clientY });
+                                        openMascotContextMenu(rawIndex, bubbleContextAnchor(event.currentTarget as HTMLElement));
                                     }}
                                     {...(activeMascotMessageIndex === rawIndex ? { "data-active": "" } : {})}
                                 >

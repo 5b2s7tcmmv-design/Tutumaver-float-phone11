@@ -1,4 +1,5 @@
 "use client";
+import {bubbleContextAnchor,placeChatContextMenu,type ContextMenuAnchor} from "./chat-context-menu-position";
 import {loadApiConfigs} from "@/lib/settings-storage";
 import { RecommendContactModal } from "./recommend-contact-modal";
 import { introductionCandidates, introduceContact } from "@/lib/contact-introduction";
@@ -588,12 +589,7 @@ type OfflineActionTarget = {
     role: "user" | "assistant";
 };
 
-type ContextMenuAnchor = {
-    x: number;
-    y: number;
-    top: number;
-    bottom: number;
-};
+
 
 type RenderChatMessage = ChatMessage & {
     displayProjected?: boolean;
@@ -1605,59 +1601,8 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         setActiveOfflineTarget(target);
     };
 
-    const bubbleContextAnchor = (node: HTMLElement): ContextMenuAnchor => {
-        const rect = node.getBoundingClientRect();
-        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, top: rect.top, bottom: rect.bottom };
-    };
     const getContextMenuInitialStyle = () => ({ left: 0, top: 0 });
-    const positionFloatingContextMenu = (el: HTMLDivElement | null) => {
-        if (!el || !contextMenuAnchor) return;
-        const anchor = contextMenuAnchor;
-        const shell = wrapperRef.current?.getBoundingClientRect();
-        const visual = window.visualViewport;
-        const vp = { left: visual?.offsetLeft ?? 0, top: visual?.offsetTop ?? 0,
-            right: (visual?.offsetLeft ?? 0) + (visual?.width ?? window.innerWidth),
-            bottom: (visual?.offsetTop ?? 0) + (visual?.height ?? window.innerHeight) };
-        const margin = 8, gap = 12;
-        const bounds = { left: Math.max(vp.left, shell?.left ?? vp.left) + margin,
-            top: Math.max(vp.top, shell?.top ?? vp.top) + margin,
-            right: Math.min(vp.right, shell?.right ?? vp.right) - margin,
-            bottom: Math.min(vp.bottom, shell?.bottom ?? vp.bottom) - margin };
-        let containing: HTMLElement | null = el.parentElement;
-        while (containing) {
-            const style = window.getComputedStyle(containing);
-            if (style.transform !== "none" || style.perspective !== "none" ||
-                style.filter !== "none" || style.contain.includes("paint")) break;
-            containing = containing.parentElement;
-        }
-        const origin = containing?.getBoundingClientRect();
-        const sx = origin && containing?.offsetWidth ? origin.width / containing.offsetWidth || 1 : 1;
-        const sy = origin && containing?.offsetHeight ? origin.height / containing.offsetHeight || 1 : 1;
-        el.style.maxWidth = String(Math.max(60, bounds.right - bounds.left) / sx) + "px";
-        el.style.whiteSpace = "normal";
-        el.querySelectorAll<HTMLElement>(":scope > .flex").forEach(row => {
-            row.style.flexWrap = "wrap";
-            row.style.maxWidth = "100%";
-        });
-        const width = el.offsetWidth * sx, height = el.offsetHeight * sy;
-        const left = Math.max(bounds.left, Math.min(anchor.x - width / 2, bounds.right - width));
-        const below = anchor.top - height - gap < bounds.top && anchor.bottom + height + gap <= bounds.bottom;
-        const top = Math.max(bounds.top, Math.min(below ? anchor.bottom + gap : anchor.top - height - gap, bounds.bottom - height));
-        el.style.left = String((left - (origin?.left ?? 0)) / sx) + "px";
-        el.style.top = String((top - (origin?.top ?? 0)) / sy) + "px";
-        el.style.right = "auto";
-        el.style.bottom = "auto";
-        const triangle = el.querySelector<HTMLElement>("[data-menu-triangle]");
-        if (triangle) {
-            triangle.style.left = String(Math.max(14, Math.min((anchor.x - left) / sx, el.offsetWidth - 14))) + "px";
-            triangle.style.right = "auto";
-            triangle.style.transform = "translateX(-50%)";
-            triangle.style.top = below ? "-6px" : "auto";
-            triangle.style.bottom = below ? "auto" : "-6px";
-            triangle.style.borderTop = below ? "none" : "6px solid var(--ctx-menu-bg, #2c2c2c)";
-            triangle.style.borderBottom = below ? "6px solid var(--ctx-menu-bg, #2c2c2c)" : "none";
-        }
-    };
+    const positionFloatingContextMenu = (el: HTMLDivElement | null) => placeChatContextMenu(el, contextMenuAnchor, wrapperRef.current);
 
     // --- Music action queue: send music operations as system messages ---
     useEffect(() => {
