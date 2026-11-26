@@ -59,6 +59,9 @@ const PRIMARY_DATA_MODULES: DataModuleDefinition[] = [
           "chat_plugin_vars_v2",
           "chat_plugin_fragments_v2",
           "chat_plugin_errors_v1",
+          "ai_phone_offline_music_icon",
+          "ai_phone_offline_music_icon_day",
+          "ai_phone_offline_music_icon_night",
           "ai_phone_image_prompt_language_v1",
           "ai_phone_text_image_mask_v1",
           "rabbit_browser_shares_v1",
@@ -68,6 +71,8 @@ const PRIMARY_DATA_MODULES: DataModuleDefinition[] = [
           "pending_reply_",
           "ai_phone_chat_offline_turns:",
           "ai_phone_chat_offline_scenes:",
+          "ai_phone_chat_offline_story_music:",
+          "ai_phone_chat_offline_image_draft:",
           "chat-offline-mode:",
           "chat-theater-mode:",
           "chat_plugin_data_v1:",
@@ -106,6 +111,12 @@ const PRIMARY_DATA_MODULES: DataModuleDefinition[] = [
           "ai_phone_image_generation_settings_v1",
           "ai_phone_bindings_v1",
           "ai_phone_schedule_prompts_v1",
+          "ai_phone_content_prompts_v1",
+          "ai_phone_content_languages_v1",
+          "ai_phone_content_language_catalog_v1",
+          "ai_phone_media_preferences_v1",
+          "ai_phone_media_scopes_v1",
+          "ai_phone_text_images_v1",
           "ai_phone_theqoo_prompt_v1",
           "ai_phone_follow_up_config_v1",
           "ai_phone_chat_send_config_v1",
@@ -132,6 +143,7 @@ const PRIMARY_DATA_MODULES: DataModuleDefinition[] = [
           "ai_phone_qa_github_v1",
           "ai_phone_media_maintenance_config_v1",
         ],
+        prefixes: ["ai_phone_model_list:"],
       },
       {
         type: "localStorage",
@@ -316,15 +328,11 @@ const PRIMARY_DATA_MODULES: DataModuleDefinition[] = [
           "ai_phone_custom_app_tasks_v1",
           "ai_phone_custom_app_world_activations_v1",
           "ai_phone_custom_app_suggestions_v1",
-
-
-
-
-
-
         ],
         prefixes: [
           "music-search-cache:",
+          "ai_phone_character_wallet_v1_",
+          "ai_phone_user_wallet_v1_",
           "music-playlist-tracks-",
           "music-playlist-detail-",
           "ai_phone_custom_app_data_v1:",
