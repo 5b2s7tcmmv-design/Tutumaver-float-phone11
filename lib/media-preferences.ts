@@ -5,10 +5,8 @@ export const MEDIA_APPS = { chat: "Chat", moments: "朋友圈", lysn: "LYSN", tw
 export type MediaApp = keyof typeof MEDIA_APPS;
 export type MediaPreferences = { global: MediaPreference; apps: Partial<Record<MediaApp, MediaPreference>>; delivery: Partial<Record<MediaApp, PhotoDeliveryMode>> };
 export const DEFAULT_PHOTO_DELIVERY: Record<MediaApp, PhotoDeliveryMode> = { chat: "text", lysn: "text", moments: "text", twitter: "text", weverse: "text", diary: "text", theqoo: "text" };
-export function effectivePhotoDelivery(appId: string): PhotoDeliveryMode {
-  if (!(appId in DEFAULT_PHOTO_DELIVERY)) return "text";
-  const value = loadMediaPreferences().delivery[appId as MediaApp];
-  return value === "text" || value === "auto" ? value : DEFAULT_PHOTO_DELIVERY[appId as MediaApp];
+export function effectivePhotoDelivery(_appId: string): PhotoDeliveryMode {
+  return "text";
 }
 const KEY = "ai_phone_media_preferences_v1";
 const RECENT = "ai_phone_media_decisions_v1";
