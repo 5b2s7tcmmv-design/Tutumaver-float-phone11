@@ -5,7 +5,9 @@ const KEY = "ai_phone_worldline_v1";
 registerKvMigration(KEY);
 
 export type WorldlineAccess = "witnessed" | "heard" | "public";
+export type LiveEventSource={platform:"weverse";id:string;state:"pending"|"ready"|"manual"};
 export type WorldlineEvent = {
+  liveSource?:LiveEventSource;
   id: string;
   title: string;
   detail: string;
@@ -41,7 +43,7 @@ export type Worldline = {
   createdAt: string;
   updatedAt: string;
 };
-export type WorldlineState = { worlds: Worldline[]; activeId: string | null };
+export type WorldlineState = { worlds: Worldline[]; activeId: string | null; dismissedLives?:string[] };
 
 export function activeWorldline(state = loadWorldlineState()): Worldline | null {
   return state.worlds.find(world => world.id === state.activeId) ?? state.worlds[0] ?? null;
@@ -60,19 +62,19 @@ export function worldlineContextForApp(appId: string, options?: { publicEvents?:
     const progressHistory = world.progressHistory.filter(p => Date.parse(p.recordedAt) <= cutoff);
     world = { ...world, currentState: progressHistory.at(-1)?.text || "", progressHistory,
       archive: world.archive.map(g => ({...g, entries: g.entries.filter(e => Date.parse(e.updatedAt) <= cutoff)})),
-      events: world.events.filter(e => Date.parse(e.occurredAt) <= cutoff) };
+      events: world.events.filter(e => Date.parse(e.liveSource?e.endsAt||e.occurredAt:e.occurredAt) <= cutoff) };
   }
   if (!world || !worldlineEnabledForApp(world, appId)) return "";
   if (appId === "lysn") {
     const now=Date.now(),current=world.progressHistory?.at(-1)?.text||world.currentState;
-    return [`【世界线：${world.name}｜Lysn公开参考】`,current?`最新进展：${current.slice(0,2400)}`:"",...world.events.filter(e=>e.visibility==="public"&&Date.parse(e.occurredAt)<=now&&now-Date.parse(e.endsAt||e.occurredAt)<14*86400000).sort((a,b)=>b.occurredAt.localeCompare(a.occurredAt)).slice(0,5).map(e=>`${worldlineTimeLabel(e,true)} ${e.title}：${e.detail.slice(0,400)}`),...world.archive.flatMap(g=>g.entries).slice(0,3).map(e=>`背景：${e.title} ${e.content.slice(0,400)}`),"以上公开事实可作为生活延续，不必逐条提及，最新进展优先。"].filter(Boolean).join("\n");
+    return [`【世界线：${world.name}｜Lysn公开参考】`,current?`最新进展：${current.slice(0,2400)}`:"",...world.events.filter(e=>!e.liveSource&&e.visibility==="public"&&Date.parse(e.occurredAt)<=now&&now-Date.parse(e.endsAt||e.occurredAt)<14*86400000).sort((a,b)=>b.occurredAt.localeCompare(a.occurredAt)).slice(0,5).map(e=>`${worldlineTimeLabel(e,true)} ${e.title}：${e.detail.slice(0,400)}`),...world.archive.flatMap(g=>g.entries).slice(0,3).map(e=>`背景：${e.title} ${e.content.slice(0,400)}`),"以上公开事实可作为生活延续，不必逐条提及，最新进展优先。"].filter(Boolean).join("\n");
   }
   if (appId === "theqoo") return theqooWorldlineContext(world, options?.focusText);
   if (["theqoo", "twitter", "xiaohongshu"].includes(appId)) return publicPlatformWorldlineContext(world, options);
   const archive = (world.archive || []).flatMap(group => group.entries.map(entry => `${group.name} / ${entry.title}：${entry.content}`));
   const history = (world.progressHistory || []).slice(0, -1).map(progress => `${progress.recordedAt}：${progress.text}`);
   const current = world.progressHistory?.at(-1)?.text || world.currentState;
-  const publicEvents = options?.publicEvents ? world.events.filter(event => event.visibility === "public" && Date.parse(event.occurredAt)<=Date.now())
+  const publicEvents = options?.publicEvents ? world.events.filter(event => !event.liveSource && event.visibility === "public" && Date.parse(event.occurredAt)<=Date.now())
     .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt))
     .map(event => `${worldlineTimeLabel(event,true)} ${event.title}：${event.detail}`) : [];
   return [
@@ -90,9 +92,7 @@ export function theqooWorldlineContext(world: Worldline, focusText = ""): string
   const current = rows.at(-1)?.text || world.currentState || "";
   const previous = rows.at(-2)?.text || "";
   const now = Date.now();
-  const events = world.events.filter(e => e.visibility === "public" && Date.parse(e.occurredAt) <= now
-    && now - Date.parse(e.endsAt || e.occurredAt) <= 14 * 86400000)
-    .sort((a,b) => b.occurredAt.localeCompare(a.occurredAt)).slice(0,5);
+  const events = selectRecentPublicWorldEvents(world.events,now,5);
   const terms = [...new Set((`${current} ${focusText}`.match(/[a-zA-Z0-9_]{3,}|[\u3400-\u9fff]{2,}/g) || [])
     .flatMap(w => /[\u3400-\u9fff]/.test(w) ? Array.from({length:w.length-1},(_,i)=>w.slice(i,i+2)) : [w.toLowerCase()]))];
   const rank = (text: string) => terms.filter(t=>text.toLowerCase().includes(t)).length;
@@ -117,7 +117,7 @@ export function loadWorldlineState(): WorldlineState {
     const value = JSON.parse(kvGet(KEY) || "null") as WorldlineState | null;
     if (value && Array.isArray(value.worlds)) return {
       worlds: value.worlds.map(world => ({ ...world, archive: Array.isArray(world.archive) ? world.archive : world.background?.trim() ? [{ id: `legacy-${world.id}`, name: "原有背景与规则", entries: [{ id: `legacy-entry-${world.id}`, title: "基础设定", content: world.background, updatedAt: world.updatedAt || world.createdAt }] }] : [], progressHistory: Array.isArray(world.progressHistory) ? world.progressHistory : world.currentState?.trim() ? [{ id: `legacy-progress-${world.id}`, text: world.currentState, recordedAt: world.updatedAt || world.createdAt }] : [] })),
-      activeId: value.activeId ?? null,
+      activeId: value.activeId ?? null, dismissedLives:value.dismissedLives||[],
     };
   } catch { /* Corrupt state falls back to empty without overwriting it. */ }
   return { worlds: [], activeId: null };
@@ -129,6 +129,7 @@ export function saveWorldlineState(state: WorldlineState): void {
 export function worldlineEventsForCharacter(characterId: string): Array<{ world: Worldline; event: WorldlineEvent; access: WorldlineAccess; perspective: string }> {
   const active = activeWorldline();
   return (active ? [active] : []).flatMap(world => world.events.flatMap(event => {
+    if(event.liveSource)return [];
     const knowledge = event.people?.[characterId];
     if (knowledge && (knowledge.access !== "public" || event.visibility === "public")) return [{ world, event, ...knowledge }];
     return event.visibility === "public" ? [{ world, event, access: "public" as const, perspective: "" }] : [];
@@ -137,7 +138,7 @@ export function worldlineEventsForCharacter(characterId: string): Array<{ world:
 export function worldlinePublicEvents(category?: string): Array<{ world: Worldline; event: WorldlineEvent }> {
   const active = activeWorldline();
   return (active ? [active] : []).flatMap(world => world.events
-    .filter(event => event.visibility === "public" && (!category || !event.category || event.category === category))
+    .filter(event => event.visibility === "public" && liveEventReady(event) && (!category || !event.category || event.category === category))
     .map(event => ({ world, event })));
 }
 
@@ -153,8 +154,8 @@ function publicPlatformWorldlineContext(world: Worldline, options?: { publicEven
   const relevantArchive = choose(archive,4,1800);
   const relevantHistory = choose(history,3,1800);
   const now = Date.now();
-  const events = options?.publicEvents ? world.events.filter(event=>event.visibility==="public" && Date.parse(event.occurredAt)<=now).sort((a,b)=>b.occurredAt.localeCompare(a.occurredAt)) : [];
-  const recentEvents = events.filter(event=>now-Date.parse(event.endsAt||event.occurredAt)<=14*86400000).slice(0,5).map(event=>`${worldlineTimeLabel(event,true)} ${event.title}：${event.detail.slice(0,350)}`);
+  const events = options?.publicEvents ? world.events.filter(event=>event.visibility==="public" && liveEventReady(event) && Date.parse(event.liveSource?event.endsAt||event.occurredAt:event.occurredAt)<=now).sort((a,b)=>b.occurredAt.localeCompare(a.occurredAt)) : [];
+  const recentEvents = selectRecentPublicWorldEvents(events,now,5).map(event=>`${worldlineTimeLabel(event,true)} ${event.title}：${event.detail.slice(0,350)}`);
   const olderEvents = choose(events.filter(event=>!recentEvents.some(line=>line.includes(`${worldlineTimeLabel(event,true)} ${event.title}：`))).map(event=>`${worldlineTimeLabel(event,true)} ${event.title}：${event.detail}`),2,1000);
   return [
     `【世界线：${world.name}｜公开平台参考】`,
@@ -164,4 +165,31 @@ function publicPlatformWorldlineContext(world: Worldline, options?: { publicEven
     relevantHistory || olderEvents ? `相关历史事实（话题涉及时核对前因）：\n${[relevantHistory,olderEvents].filter(Boolean).join("\n")}` : "",
     relevantArchive ? `相关背景常识（理解设定用）：\n${relevantArchive}` : "",
   ].filter(Boolean).join("\n\n");
+}
+
+export const liveEventReady=(event:WorldlineEvent)=>!event.liveSource||event.liveSource.state!=="pending"&&Boolean(event.detail.trim());
+export function selectRecentPublicWorldEvents(events:WorldlineEvent[],now=Date.now(),limit=5){
+ const recent=events.filter(e=>e.visibility==="public"&&liveEventReady(e)&&Date.parse(e.liveSource?e.endsAt||e.occurredAt:e.occurredAt)<=now&&now-Date.parse(e.endsAt||e.occurredAt)<=14*86400000).sort((a,b)=>Date.parse(b.endsAt||b.occurredAt)-Date.parse(a.endsAt||a.occurredAt));
+ const normal=recent.filter(e=>!e.liveSource),lives=recent.filter(e=>e.liveSource);
+ return [...normal.slice(0,Math.max(0,limit-Math.min(2,lives.length))),...lives.slice(0,normal.length?2:limit),...normal.slice(Math.max(0,limit-Math.min(2,lives.length)))].slice(0,limit).sort((a,b)=>Date.parse(b.endsAt||b.occurredAt)-Date.parse(a.endsAt||a.occurredAt));
+}
+export function ensureLiveWorldEvent(worldId:string|undefined,source:LiveEventSource,base:Pick<WorldlineEvent,"title"|"occurredAt"|"endsAt"|"people">){
+ const state=loadWorldlineState(),key=source.platform+":"+source.id;
+ if(!worldId||state.dismissedLives?.includes(key))return;
+ const existing=state.worlds.flatMap(w=>w.events).find(e=>e.liveSource?.platform===source.platform&&e.liveSource.id===source.id);
+ if(existing)return existing;
+ const world=state.worlds.find(w=>w.id===worldId);if(!world)return;
+ const now=new Date().toISOString(),event:WorldlineEvent={...base,id:"live:"+key,detail:"",category:"直播",visibility:"public",locked:true,createdAt:now,updatedAt:now,liveSource:{...source,state:"pending"}};
+ saveWorldlineState({...state,worlds:state.worlds.map(w=>w.id===worldId?{...w,events:[...w.events,event]}:w)});
+ return event;
+}
+export function removeLiveWorldEvent(platform:LiveEventSource["platform"],id:string){
+ const state=loadWorldlineState();
+ if(!state.worlds.some(w=>w.events.some(e=>e.liveSource?.platform===platform&&e.liveSource.id===id)))return;
+ saveWorldlineState({...state,worlds:state.worlds.map(w=>({...w,events:w.events.filter(e=>!(e.liveSource?.platform===platform&&e.liveSource.id===id))}))});
+}
+export function dismissLiveWorldEvent(event:WorldlineEvent){
+ if(!event.liveSource)return;
+ const state=loadWorldlineState(),key=event.liveSource.platform+":"+event.liveSource.id;
+ saveWorldlineState({...state,dismissedLives:[...new Set([...(state.dismissedLives||[]),key])],worlds:state.worlds.map(w=>({...w,events:w.events.filter(e=>e.id!==event.id)}))});
 }

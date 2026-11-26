@@ -1,3 +1,4 @@
+import { activeWorldline, removeLiveWorldEvent } from "./worldline-storage";
 import { queueNativeMemoryUpdate } from "./native-memory-update";
 import { reconcileCalendarMaster } from "./calendar-master";
 import type { PhotoStorySnapshot } from "./photo-story-data";
@@ -121,6 +122,7 @@ export type WeverseLivePresence = {
   joinedVia?: "invitation" | "viewer";
 };
 export type WeverseLive = {
+  worldId?:string; scheduleId?:string; scheduledEndAt?:number; generatedThrough?:number; memorySummaries?:Record<string,{fingerprint:string;content:string;shared:boolean}>;
   id: string;
   communityId: string;
   /** 本场实际作为主播/连线嘉宾出现过的全部角色。第一个始终是最初开播者。 */
@@ -234,7 +236,7 @@ function normalizeLive(raw: unknown): WeverseLive | null {
   const viewerPresenceRaw = Array.isArray((item as any).viewerPresence) ? (item as any).viewerPresence : [];
   const viewerPresence = viewerPresenceRaw.map(normalizeLivePresence).filter((v: WeverseLivePresence | null): v is WeverseLivePresence => Boolean(v));
   return {
-    id: item.id, communityId: item.communityId, hostCharacterIds, activeCharacterIds, participantPresence, viewerPresence, liveType: item.liveType === "voice" ? "voice" : "visual", orientation: "landscape",
+    id: item.id, worldId:item.worldId,scheduleId:item.scheduleId,scheduledEndAt:item.scheduledEndAt,generatedThrough:item.generatedThrough, memorySummaries:item.memorySummaries, communityId: item.communityId, hostCharacterIds, activeCharacterIds, participantPresence, viewerPresence, liveType: item.liveType === "voice" ? "voice" : "visual", orientation: "landscape",
     status, title: typeof item.title === "string" && item.title.trim() ? item.title.trim() : "Live",
     theme: typeof item.theme === "string" && item.theme.trim() ? item.theme.trim() : undefined,
     coverUrl: typeof (item as any).coverUrl === "string" && (item as any).coverUrl ? (item as any).coverUrl : undefined, startedAt,
@@ -371,7 +373,7 @@ export function updateWeverseMemberProfile(
 }
 export function updateWeverseSettings(patch: Partial<WeverseSettings>): WeverseState { const state=loadWeverseState(); return saveWeverseState({...state,settings:normalizeSettings({...state.settings,...patch,notifications:{...state.settings.notifications,...(patch.notifications||{})}})}); }
 export function upsertWeverseCommunity(community: WeverseCommunity): WeverseState { const state=loadWeverseState(); const i=state.communities.findIndex(v=>v.id===community.id); const communities=[...state.communities]; if(i>=0) communities[i]=community; else communities.unshift(community); return saveWeverseState({...state,communities}); }
-export function deleteWeverseCommunity(communityId:string):WeverseState { const state=loadWeverseState(); state.lives.filter(l => l.communityId === communityId).forEach(l => deleteWeverseLiveMemory(l.id)); return saveWeverseState({...state,communities:state.communities.filter(v=>v.id!==communityId),posts:state.posts.filter(v=>v.communityId!==communityId),notices:state.notices.filter(v=>v.communityId!==communityId),lives:state.lives.filter(v=>v.communityId!==communityId),schedules:state.schedules.filter(v=>v.communityId!==communityId)}); }
+export function deleteWeverseCommunity(communityId:string):WeverseState { const state=loadWeverseState(); state.lives.filter(l => l.communityId === communityId).forEach(l => { removeLiveWorldEvent("weverse",l.id); deleteWeverseLiveMemory(l.id); }); return saveWeverseState({...state,communities:state.communities.filter(v=>v.id!==communityId),posts:state.posts.filter(v=>v.communityId!==communityId),notices:state.notices.filter(v=>v.communityId!==communityId),lives:state.lives.filter(v=>v.communityId!==communityId),schedules:state.schedules.filter(v=>v.communityId!==communityId)}); }
 export function addWeversePost(post:WeversePost):WeverseState { const state=loadWeverseState(); return saveWeverseState({...state,posts:[post,...state.posts]}); }
 export function addWeversePosts(posts:WeversePost[]):WeverseState { if(!posts.length) return loadWeverseState(); const state=loadWeverseState(); return saveWeverseState({...state,posts:[...posts,...state.posts]}); }
 export function updateWeversePost(postId:string,patch:Partial<WeversePost>):WeverseState { const state=loadWeverseState(); return saveWeverseState({...state,posts:state.posts.map(v=>v.id===postId?{...v,...patch}:v)}); }
@@ -397,13 +399,14 @@ export function deleteWeverseScheduleItem(itemId: string): WeverseState {
 
 export function addWeverseLive(live: WeverseLive): WeverseState {
   const state = loadWeverseState();
-  return saveWeverseState({ ...state, lives: [live, ...state.lives.filter((item) => item.id !== live.id)] });
+  return saveWeverseState({ ...state, lives: [{...live,worldId:live.worldId||activeWorldline()?.id}, ...state.lives.filter((item) => item.id !== live.id)] });
 }
 export function updateWeverseLive(liveId: string, patch: Partial<WeverseLive>): WeverseState {
   const state = loadWeverseState();
   return saveWeverseState({ ...state, lives: state.lives.map((item) => item.id === liveId ? { ...item, ...patch } : item) });
 }
 export function deleteWeverseLive(liveId: string): WeverseState {
+  removeLiveWorldEvent("weverse",liveId);
   deleteWeverseLiveMemory(liveId);
   const state = loadWeverseState();
   return saveWeverseState({ ...state, lives: state.lives.filter((item) => item.id !== liveId) });

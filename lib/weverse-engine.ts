@@ -1,3 +1,4 @@
+import { liveInteractionHints } from "./live-interaction-hints";
 import {contentPrompt} from './content-prompt-settings';
 import { LIVE_CHINESE_PROXY_RULE } from "./live-chinese-proxy";
 // Public audiences must receive only published dialogue/visible scenes; never host-private calendar or memories.
@@ -780,12 +781,12 @@ function liveFormatRules(opening = false, liveType: "visual" | "voice" | "auto" 
 export async function generateWeverseLiveOpening(
   characterId: string,
   community: WeverseCommunity,
-  options?: { theme?: string; now?: Date; liveType?: "visual" | "voice" | "auto"; opportunistic?: boolean },
+  options?: { theme?: string; now?: Date; liveType?: "visual" | "voice" | "auto"; opportunistic?: boolean; historical?:boolean },
 ): Promise<GeneratedWeverseLiveRound> {
   const now = options?.now ?? new Date();
   const available=weverseLiveAvailability(characterId,now.getTime());
   if(!available.free)throw new ChatEngineError(available.reason);
-  const resolved = await resolveCharacterGeneration(characterId, community, { now });
+  const resolved = await resolveCharacterGeneration(characterId, community, { now,historical:options?.historical });
   const theme = String(options?.theme || available.scheduledTheme || "").trim();
   const requestedLiveType = options?.liveType === "voice" || options?.liveType === "visual" ? options.liveType : "auto";
   const raw = await sendLLMRequest(
@@ -811,7 +812,7 @@ export async function generateWeverseLiveOpening(
     ],
     resolved.regexes,
     { characterName: `Weverse Live:${resolved.character.name}`, userName: resolved.userName },
-    { appId: "weverse", appTags: ["weverse", "live"], skipOutputRegex: true },
+    { appId: "weverse", appTags: ["weverse", "live"], skipOutputRegex: true,skipWorldline:options?.historical===true },
   );
   const parsed = extractJsonObject(raw);
   if(options?.opportunistic && parsed?.shouldStart === false)return {shouldStart:false,segments:[],comments:[],artistComments:[],viewerJoins:[],viewerLeaves:[],participantJoins:[],participantLeaves:[],shouldEnd:false};
@@ -828,10 +829,10 @@ export async function generateWeverseLiveContinuation(
   characterId: string,
   community: WeverseCommunity,
   live: WeverseLive,
-  options?: { userComments?: string[]; now?: Date },
+  options?: { userComments?: string[]; now?: Date; historical?:boolean },
 ): Promise<GeneratedWeverseLiveRound> {
   const now = options?.now ?? new Date();
-  const resolved = await resolveCharacterGeneration(characterId, community, { now });
+  const resolved = await resolveCharacterGeneration(characterId, community, { now,historical:options?.historical });
   const userComments = (options?.userComments || []).map((item) => item.trim()).filter(Boolean).slice(0, 12);
   const validCommunityIds = new Set(community.memberCharacterIds.filter(id => !id.startsWith("user:")));
   const currentActiveIds = new Set((live.activeCharacterIds?.length ? live.activeCharacterIds : [characterId]).filter((id) => validCommunityIds.has(id)));
@@ -868,6 +869,7 @@ export async function generateWeverseLiveContinuation(
           "允许普通围观艺人随后被主播邀请或自己接入连线：把角色 ID 放进 participantJoins；加入后该角色本轮即可在 segments 里说话。也允许已连线的非最初开播者中途离开，放进 participantLeaves。最初开播者若要离开，应直接 shouldEnd=true，而不是 participantLeaves。",
           live.liveType === "voice" ? "如果 participantJoins 发生，仍然留在同一个语音 Stage，以成员头像和每段 characterId 区分；不要生成动作。" : "如果 participantJoins 发生，不需要视频分屏描述；仍然是同一个文字 Live Stage。多人 Stage 里不要机械轮流说话，谁说几句、谁沉默都按现场自然发生。",
           liveTranscriptContext(live, community, now.getTime()),
+          [...currentActiveIds].map(id=>{const hints=liveInteractionHints(id,Math.max(live.startedAt,live.generatedThrough??live.segments.filter(s=>s.createdAt<=now.getTime()).at(-1)?.createdAt??live.startedAt),now.getTime());return hints?`${liveMemberName(community,id)}：${hints}（只体现实际手机动作，不公开私聊内容或身份）`:"";}).filter(Boolean).join("\n"),
           userComments.length ? `用户自上次推进后已经公开发到直播间的评论如下。可能带有共同社区艺人的公开署名，你不必逐条回应：\n${userComments.map((item, index) => `${index + 1}. ${item}`).join("\n")}` : "用户这一轮没有新的公开评论，只是在继续观看。",
           "生成接下来的 2~5 个短 segment 和 7~12 条新普通观众留言。以说话为主；只有确实有新动作时才生成 action。",
           "如果台词确实回复了一条已有评论，segment 的 replyToCommentIds 数组填写真实评论 ID。否则留空。",
@@ -881,7 +883,7 @@ export async function generateWeverseLiveContinuation(
     ],
     resolved.regexes,
     { characterName: `Weverse Live:${resolved.character.name}`, userName: resolved.userName },
-    { appId: "weverse", appTags: ["weverse", "live"], skipOutputRegex: true },
+    { appId: "weverse", appTags: ["weverse", "live"], skipOutputRegex: true,skipWorldline:options?.historical===true },
   );
   const parsed = extractJsonObject(raw);
 

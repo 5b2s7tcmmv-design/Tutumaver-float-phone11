@@ -170,7 +170,7 @@ export function loadWeverseProjectionEntries(characterId: string, options?: { af
 }
 
 export function deleteWeverseLiveMemory(liveId: string): void {
-  revokeMemorySources([`wvs:${liveId}`]);
+  // The live and its direct projections are deleted; derived long-term memories remain.
   for (const key of kvKeysWithPrefix(WEV_EVENT_PREFIX)) {
     const characterId = key.slice(WEV_EVENT_PREFIX.length);
     const next = loadEventsByKey(key).filter(e => e.id !== `weverse_live_participant_${liveId}_${characterId}` && e.id !== `weverse_live_viewer_${liveId}_${characterId}` && e.id !== `weverse_live_replay_${liveId}_${characterId}`);

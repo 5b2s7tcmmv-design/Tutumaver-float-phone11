@@ -2,9 +2,9 @@ import type { WeverseLive, WeverseLivePresence } from "./weverse-storage";
 import type { WeverseProjectionEntry } from "./weverse-memory";
 
 type LiveRecord = Pick<WeverseLive, "id" | "communityId" | "hostCharacterIds" | "startedAt" | "endedAt" | "status" | "official" | "title" | "segments" | "comments">
-    & Partial<Pick<WeverseLive, "participantPresence" | "viewerPresence">>;
+    & Partial<Pick<WeverseLive, "participantPresence" | "viewerPresence" | "memorySummaries">>;
 type Span = { id: string; from: number; to: number; joinedVia?: WeverseLivePresence["joinedVia"] };
-type Witnessed = { at: number; text: string };
+type Witnessed = { at: number; text: string; shared?: boolean };
 
 const byTime = (a: Witnessed, b: Witnessed) => a.at - b.at;
 const displayTime = (at: number) => new Date(at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
@@ -26,6 +26,7 @@ export function buildWeverseLiveMemory(
     characterId: string,
     communityName: string,
     nameOf: (id: string) => string,
+    rawOnly=false,
 ): WeverseProjectionEntry[] {
     const start = live.startedAt;
     const end = live.endedAt;
@@ -59,13 +60,19 @@ export function buildWeverseLiveMemory(
     });
     const sawOpening = watched(start);
     const stageNames = [...new Set(participants.filter(span => span.id !== characterId && attended.some(own => overlap(own, span))).map(span => nameOf(span.id)))];
-    const shared = onStage.some(span => participants.some(other => other.id !== characterId && !other.id.startsWith("user:") && overlap(span, other)));
+    const onStageAt = (span: Span, at: number) => span.from <= at && (at < span.to || (span.to === end && at === end));
+    // Only speech/actions in an actual overlapping stage interval are shared.
+    // Audience comments, arrival/exit and solo segments remain personal.
+    const sharedAt = (at: number, speaker?: string) => !!speaker &&
+        onStage.some(span => onStageAt(span, at)) &&
+        participants.some(other => other.id !== characterId && !other.id.startsWith("user:") && onStageAt(other, at)) &&
+        participants.some(span => span.id === speaker && onStageAt(span, at));
     const prefix = `weverse_live_${onStage.length ? "participant" : "viewer"}_${live.id}_${characterId}`;
     const sourceKeys = [`wvs:${live.id}`];
     const entries: WeverseProjectionEntry[] = [{
         id: prefix,
         timestamp: publishedAt,
-        shared,
+        shared: false,
         sourceKeys,
         content: [
             `${label}，${onStage.length ? "你上过台" : "你围观过"}。`,
@@ -95,7 +102,7 @@ export function buildWeverseLiveMemory(
             const comment = commentById.get(id);
             return comment && comment.createdAt <= row.createdAt ? [`${comment.authorName}的「${compact(comment.originalBody || comment.body)}」`] : [];
         });
-        facts.push({ at: row.createdAt, text: `${displayTime(row.createdAt)} ${who}${row.kind === "action" ? "做了" : replies.length ? `回应${replies.join("、")}` : "说"}：${compact(row.original)}` });
+        facts.push({ at: row.createdAt, shared: sharedAt(row.createdAt, row.characterId), text: `${displayTime(row.createdAt)} ${who}${row.kind === "action" ? "做了" : replies.length ? `回应${replies.join("、")}` : "说"}：${compact(row.original)}` });
     }
 
     // Small chronological events keep a long live from taking up the whole Chat context at once.
@@ -106,7 +113,7 @@ export function buildWeverseLiveMemory(
         entries.push({
             id: `${prefix}_detail_${entries.length}`,
             timestamp: publishedAt,
-            shared,
+            shared: block[0].shared === true,
             sourceKeys,
             content: `${label} 在你在场的这段：\n${block.map(item => item.text).join("\n")}`,
         });
@@ -114,10 +121,25 @@ export function buildWeverseLiveMemory(
         size = 0;
     };
     for (const fact of facts.sort(byTime)) {
-        if (size + fact.text.length > 850) flush();
+        if (size + fact.text.length > 850 || (block.length && Boolean(block[0].shared) !== Boolean(fact.shared))) flush();
         block.push(fact);
         size += fact.text.length;
     }
     flush();
-    return entries;
+    if(rawOnly)return entries;
+    return splitWeverseLiveMemory(entries).flatMap(({shared,entries:group})=>{
+        const cached=live.memorySummaries?.[weverseLiveSummaryKey(characterId,shared)] ||
+            live.memorySummaries?.[characterId];
+        if(cached?.shared===shared&&cached.fingerprint===weverseLiveFingerprint(group)&&cached.content.trim())
+            return [{...group[0],content:cached.content,shared}];
+        return group;
+    });
+}
+
+export function weverseLiveFingerprint(entries:WeverseProjectionEntry[]){const text=entries.map(e=>e.content).join("\n");let hash=2166136261;for(let i=0;i<text.length;i++)hash=Math.imul(hash^text.charCodeAt(i),16777619);return text.length+":"+(hash>>>0).toString(16);}
+
+/** Distinct cache keys prevent a joint-stage summary from swallowing private/solo facts. */
+export const weverseLiveSummaryKey=(characterId:string,shared:boolean)=>characterId+(shared?":shared":":personal");
+export function splitWeverseLiveMemory(entries:WeverseProjectionEntry[]){
+ return [false,true].map(shared=>({shared,entries:entries.filter(e=>Boolean(e.shared)===shared)})).filter(g=>g.entries.length);
 }
