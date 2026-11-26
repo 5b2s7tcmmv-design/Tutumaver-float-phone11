@@ -26,6 +26,7 @@ import { MessageBubble } from "@/components/chat/message-bubble";
 import { ContentDialog } from "@/components/ui/modal";
 import { Toggle } from "@/components/ui/form";
 import { PdfPageRenderer } from "./reading-pdf-viewer";
+import { ReadingFoldStage, type ReadingFoldDirection, type ReadingFoldTarget } from "./reading-fold-stage";
 import { decodeTxtArrayBuffer, parsePdfPageRange, PDF_PAGES_PER_CHAPTER, parseTxtContent, parseEpubFile } from "@/lib/reading-parser";
 import type { Book, BookChapter, ReadingAnnotation, ReadingProgress } from "@/lib/reading-types";
 import type { Character } from "@/lib/character-types";
@@ -294,7 +295,7 @@ export function ReadingViewer({ book, onBack }: Props) {
     const [pdfPrefetchStartInput, setPdfPrefetchStartInput] = useState("");
     const [pdfPrefetchEndInput, setPdfPrefetchEndInput] = useState("");
     const [chaptersLoaded, setChaptersLoaded] = useState(false);
-    const touchStartRef = useRef({ x: 0, y: 0 });
+    const readingTurnRef = useRef<((direction: ReadingFoldDirection) => void) | null>(null);
     const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
     const [readingMessageMenu, setReadingMessageMenu] = useState<{ messageId: string; x: number; y: number } | null>(null);
     const [editingDiscussMessage, setEditingDiscussMessage] = useState<ChatMessage | null>(null);
@@ -331,7 +332,7 @@ export function ReadingViewer({ book, onBack }: Props) {
     const [txtLayoutVersion, setTxtLayoutVersion] = useState(0);
     const [txtPages, setTxtPages] = useState<TxtPageItem[][]>([]);
     const [scrollFraction, setScrollFraction] = useState(0);
-    const [flipAnim, setFlipAnim] = useState<{ direction: 'forward' | 'backward'; items: TxtPageItem[] } | null>(null);
+    const paginateChapterRef = useRef<((chapter: BookChapter, index: number) => TxtPageItem[][]) | null>(null);
 
     const [enrichedContacts, setEnrichedContacts] = useState<(ReturnType<typeof loadChatContacts>[number] & { char: Character })[]>([]);
 
@@ -468,7 +469,7 @@ export function ReadingViewer({ book, onBack }: Props) {
                     : item.kind === "annotation"
                         ? <div key={i} className="reading-annotation">
                             <span className="reading-annotation-name">{item.annotation.characterName}</span>
-                            <span className="reading-annotation-text">{item.annotation.content}</span>
+                            <ReadingAnnotationContent text={item.annotation.content} bilingualEnabled={bilingualTranslationEnabled} expanded={isAnnotationTranslationExpanded(item.annotation.id)} onToggle={() => {}} />
                         </div>
                         : <p key={i} className={`reading-line${item.indent ? " reading-line-indent" : ""}${item.segEnd ? " reading-line-seg-end" : ""}`}>{item.text}</p>
             )}
@@ -1745,6 +1746,7 @@ export function ReadingViewer({ book, onBack }: Props) {
     // 滚动模式下不参与分页，直接渲染整章内容。
     useEffect(() => {
         if (isPdf || isScrollMode || !currentChapter || !scrollRef.current || !txtMeasureLineRef.current || !txtMeasureGapRef.current || !txtMeasureAnnotationRef.current) {
+            paginateChapterRef.current = null;
             setTxtPages([]);
             return;
         }
@@ -1796,8 +1798,6 @@ export function ReadingViewer({ book, onBack }: Props) {
             lineStyle.fontStyle,
         ].join("::");
 
-        if (lastTxtPaginationSignatureRef.current === paginationSignature) return;
-
         const measureAnnotationHeight = (annotation: ReadingAnnotation) => {
             if (!annotationNameEl || !annotationTextEl) return lineHeight * 2;
             annotationNameEl.textContent = annotation.characterName;
@@ -1822,80 +1822,91 @@ export function ReadingViewer({ book, onBack }: Props) {
         }
         ctx.font = toCanvasFont(lineStyle);
 
-        const tokens: TxtPageItem[] = [];
-        const annotationMap = new Map<number, ReadingAnnotation[]>();
-        for (const annotation of chapterAnnotations) {
-            const list = annotationMap.get(annotation.paragraphIndex) || [];
-            list.push(annotation);
-            annotationMap.set(annotation.paragraphIndex, list);
-        }
+        const paginate = (targetChapter: BookChapter, targetIndex: number): TxtPageItem[][] => {
+            const tokens: TxtPageItem[] = [];
+            const annotationMap = new Map<number, ReadingAnnotation[]>();
+            for (const annotation of annotations.filter(a => a.chapterIndex === targetIndex)) {
+                const list = annotationMap.get(annotation.paragraphIndex) || [];
+                list.push(annotation);
+                annotationMap.set(annotation.paragraphIndex, list);
+            }
 
-        currentChapter.paragraphs.forEach((paragraph, index) => {
-            const segments = paragraph.split("\n");
-            segments.forEach((segment, segmentIndex) => {
-                const shouldIndent = segmentIndex === 0;
-                const wrappedLines = wrapTextToLines(segment, maxWidth, ctx, shouldIndent ? indentWidth : 0);
-                wrappedLines.forEach((line, lineIndex) => {
-                    tokens.push({ kind: "line", text: line, chapterIndex, paragraphIndex: index, indent: shouldIndent && lineIndex === 0, segEnd: lineIndex === wrappedLines.length - 1 });
+            targetChapter.paragraphs.forEach((paragraph, index) => {
+                const segments = paragraph.split("\n");
+                segments.forEach((segment, segmentIndex) => {
+                    const shouldIndent = segmentIndex === 0;
+                    const wrappedLines = wrapTextToLines(segment, maxWidth, ctx, shouldIndent ? indentWidth : 0);
+                    wrappedLines.forEach((line, lineIndex) => {
+                        tokens.push({ kind: "line", text: line, chapterIndex: targetIndex, paragraphIndex: index, indent: shouldIndent && lineIndex === 0, segEnd: lineIndex === wrappedLines.length - 1 });
+                    });
+                    if (segmentIndex < segments.length - 1) tokens.push({ kind: "gap", chapterIndex: targetIndex, paragraphIndex: index });
                 });
-                if (segmentIndex < segments.length - 1) tokens.push({ kind: "gap", chapterIndex, paragraphIndex: index });
+                const paragraphAnnotations = annotationMap.get(index) || [];
+                for (const annotation of paragraphAnnotations) {
+                    tokens.push({ kind: "annotation", annotation, chapterIndex: targetIndex, paragraphIndex: index });
+                }
+                if (index < targetChapter.paragraphs.length - 1) tokens.push({ kind: "gap", chapterIndex: targetIndex, paragraphIndex: index });
             });
-            const paragraphAnnotations = annotationMap.get(index) || [];
-            for (const annotation of paragraphAnnotations) {
-                tokens.push({ kind: "annotation", annotation, chapterIndex, paragraphIndex: index });
-            }
-            if (index < currentChapter.paragraphs.length - 1) tokens.push({ kind: "gap", chapterIndex, paragraphIndex: index });
-        });
 
-        const pages: TxtPageItem[][] = [];
-        let currentPage: TxtPageItem[] = [];
-        let usedHeight = 0;
+            const pages: TxtPageItem[][] = [];
+            let currentPage: TxtPageItem[] = [];
+            let usedHeight = 0;
 
-        for (const token of tokens) {
-            const tokenHeight = token.kind === "gap" ? gapHeight : token.kind === "annotation" ? measureAnnotationHeight(token.annotation) : lineHeight;
-            if (token.kind === "gap" && currentPage.length === 0) continue;
+            for (const token of tokens) {
+                const tokenHeight = token.kind === "gap" ? gapHeight : token.kind === "annotation" ? measureAnnotationHeight(token.annotation) : lineHeight;
+                if (token.kind === "gap" && currentPage.length === 0) continue;
 
-            if (currentPage.length > 0 && usedHeight + tokenHeight > maxHeight) {
-                pages.push(trimTrailingGaps(currentPage));
-                currentPage = [];
-                usedHeight = 0;
-                if (token.kind === "gap") continue;
+                if (currentPage.length > 0 && usedHeight + tokenHeight > maxHeight) {
+                    pages.push(trimTrailingGaps(currentPage));
+                    currentPage = [];
+                    usedHeight = 0;
+                    if (token.kind === "gap") continue;
+                }
+
+                currentPage.push(token);
+                usedHeight += tokenHeight;
             }
 
-            currentPage.push(token);
-            usedHeight += tokenHeight;
-        }
+            const lastPage = trimTrailingGaps(currentPage);
+            if (lastPage.length > 0) pages.push(lastPage);
+            if (pages.length === 0) pages.push([{ kind: "line", text: "", chapterIndex: targetIndex, paragraphIndex: 0 }]);
 
-        const lastPage = trimTrailingGaps(currentPage);
-        if (lastPage.length > 0) pages.push(lastPage);
-        if (pages.length === 0) pages.push([{ kind: "line", text: "", chapterIndex, paragraphIndex: 0 }]);
-
+            return pages;
+        };
+        paginateChapterRef.current = paginate;
+        if (lastTxtPaginationSignatureRef.current === paginationSignature) return;
+        const pages = paginate(currentChapter, chapterIndex);
         lastTxtPaginationSignatureRef.current = paginationSignature;
         setTxtPages(pages);
     }, [annotations, bilingualTranslationEnabled, chapterIndex, currentChapter, isAnnotationTranslationExpanded, isPdf, isScrollMode, txtLayoutVersion]);
 
     const txtTotalPages = txtPagesReadyForCurrentChapter ? txtPages.length : 1;
 
-    const navigateWithFlip = useCallback((direction: 'forward' | 'backward') => {
-        if (flipAnim || isPdf) return;
-        const currentItems = txtPages[txtPage];
-        if (!currentItems || currentItems.length === 0) return;
-
-        const canForward = txtPage < txtTotalPages - 1 || chapterIndex < chapters.length - 1;
-        const canBackward = txtPage > 0 || chapterIndex > 0;
-        if (direction === 'forward' && !canForward) return;
-        if (direction === 'backward' && !canBackward) return;
-
-        setFlipAnim({ direction, items: currentItems });
-
-        if (direction === 'forward') {
-            if (txtPage < txtTotalPages - 1) setTxtPage(p => p + 1);
-            else goToChapter(chapterIndex + 1);
-        } else {
-            if (txtPage > 0) setTxtPage(p => p - 1);
-            else goToChapter(chapterIndex - 1, true);
+    const prepareFoldTarget = (direction: ReadingFoldDirection): ReadingFoldTarget | null => {
+        if (!txtPagesReadyForCurrentChapter || !txtPages[txtPage]?.length || isPdf || isScrollMode) return null;
+        const delta = direction === "forward" ? 1 : -1;
+        const nextPage = txtPage + delta;
+        if (nextPage >= 0 && nextPage < txtPages.length) {
+            return { content: renderStaticPage(txtPages[nextPage]), commit: () => setTxtPage(nextPage) };
         }
-    }, [flipAnim, isPdf, txtPages, txtPage, txtTotalPages, chapterIndex, chapters.length]);
+        const nextChapter = chapterIndex + delta;
+        const chapter = chapters[nextChapter];
+        if (!chapter || !paginateChapterRef.current) return null;
+        const pages = paginateChapterRef.current(chapter, nextChapter);
+        if (!pages.length) return null;
+        const index = direction === "forward" ? 0 : pages.length - 1;
+        // Commit only after the paper has settled. Use exactly the pre-paginated target,
+        // including on a backward chapter boundary, so no intermediate page zero flashes.
+        return { content: renderStaticPage(pages[index]), commit: () => {
+            pendingTxtPageFractionRef.current = null;
+            pendingScrollFractionRef.current = direction === "forward" ? 0 : 1;
+            setChapterIndex(nextChapter);
+            setTxtPages(pages);
+            setTxtPage(index);
+        }};
+    };
+
+    const navigateWithFlip = (direction: ReadingFoldDirection) => readingTurnRef.current?.(direction);
 
     const txtDisplayedPage = Math.min(txtPage + 1, txtTotalPages);
     const currentPageCount = isPdf ? Math.max(1, pdfTotalPages || 1) : Math.max(1, txtTotalPages);
@@ -2085,19 +2096,6 @@ export function ReadingViewer({ book, onBack }: Props) {
         }
     }, [isScrollMode, chapterIndex, windowChapters, chaptersLoaded, annotations, txtLayoutVersion, book.id]);
 
-    // Swipe handlers for TXT
-    const handleTouchStart = (e: React.TouchEvent) => {
-        touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-    };
-
-    const handleTouchEnd = (e: React.TouchEvent) => {
-        const dx = e.changedTouches[0].clientX - touchStartRef.current.x;
-        const dy = e.changedTouches[0].clientY - touchStartRef.current.y;
-        if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-            navigateWithFlip(dx < 0 ? 'forward' : 'backward');
-        }
-    };
-
     const activeReadingMenuMessage = readingMessageMenu
         ? chatMessages.find((msg) => msg.id === readingMessageMenu.messageId) || null
         : null;
@@ -2125,21 +2123,6 @@ export function ReadingViewer({ book, onBack }: Props) {
 
     return (
         <div data-reverse-book-id={book.id} className="reading-app-surface absolute inset-0 z-[100] flex flex-col bg-[var(--c-page-body-bg)]" data-immersive={immersive} style={{ paddingTop: "var(--page-header-safe-top, 48px)" }}>
-            {/* Page flip overlay */}
-            {flipAnim && (
-                <>
-                    <div
-                        className={`reading-flip-overlay reading-flip-overlay--${flipAnim.direction}`}
-                        onAnimationEnd={() => setFlipAnim(null)}
-                    >
-                        <div className="reading-flip-overlay-body">
-                            {renderStaticPage(flipAnim.items)}
-                        </div>
-                    </div>
-                    <div className={`reading-flip-shadow reading-flip-shadow--${flipAnim.direction}`} />
-                </>
-            )}
-
             {/* Header — chapter name + page info */}
             <header className={`reading-header ${immersive ? "reading-header--immersive" : "reading-header--revealed"}`} data-ui="header">
                 <div className="reading-header-top">
@@ -2277,15 +2260,14 @@ export function ReadingViewer({ book, onBack }: Props) {
                     </div>
                 ) : (
                     <>
-                        <div
-                            className="reading-page-stage"
-                            onTouchStart={handleTouchStart}
-                            onTouchEnd={handleTouchEnd}
+                        <ReadingFoldStage
+                            pageKey={`${book.id}:${chapterIndex}:${txtPage}:${txtLayoutVersion}`}
+                            turnRef={readingTurnRef}
+                            prepareTarget={prepareFoldTarget}
+                            disabled={!txtPagesReadyForCurrentChapter || !!activeAnnotationId || !!activeMessageId}
                         >
-                            <div className="reading-page-surface">
-                                {txtPagesReadyForCurrentChapter ? renderTxtPage(txtPage) : null}
-                            </div>
-                        </div>
+                            {txtPagesReadyForCurrentChapter ? renderTxtPage(txtPage) : null}
+                        </ReadingFoldStage>
 
                         <div className="reading-page-measure" aria-hidden="true">
                             <p ref={txtMeasureLineRef} className="reading-line">测</p>
