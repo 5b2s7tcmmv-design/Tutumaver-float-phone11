@@ -1842,6 +1842,11 @@ html[data-zoom-fallback] .phone-shell-wrap {
 .app-notice-switch[aria-checked="true"] { background:var(--notice-accent, var(--c-primary, #1d9bf0)); }
 .app-notice-switch[aria-checked="true"] > i { transform:translateX(14px); }
 
+
+/* Shared operation feedback; message/call banners are intentionally separate. */
+.operation-feedback-toast{position:absolute;top:calc(var(--status-bar-top,12px) + var(--status-bar-height,36px) + 6px)!important;bottom:auto!important;left:50%!important;right:auto!important;transform:translateX(-50%);z-index:10020;width:min(calc(100% - 28px),440px);max-width:440px;box-sizing:border-box;border-radius:14px;background:#fff!important;color:#111!important;padding:12px 14px;border:1px solid #0000000d;box-shadow:0 6px 24px #0002;font-family:inherit;font-size:calc(12px * var(--app-text-scale,1));line-height:1.5;pointer-events:auto;cursor:pointer;overflow-wrap:anywhere;}
+.phone-shell:has(.chat-app[data-chat-theme="dark"]) .operation-feedback-toast,.operation-feedback-toast:where([data-theme="dark"] *,[data-chat-theme="dark"] *,[data-calendar-theme="dark"] *,[data-story-theme="night"] *){background:#000!important;color:#fff!important;border-color:#ffffff26;}
+.operation-feedback-toast :is(strong,p,small,svg){color:inherit!important;}
 /* Configurable desktop grid. Dock and status bar retain their own geometry. */
 .phone-shell .icon-grid { padding-bottom: max(0px, calc(var(--home-grid-bottom-trim, 0px) - 8px)); }
 .phone-shell[data-grid-cols="5"] .icon-grid { --slot-gap-x: 12px; }
@@ -1854,6 +1859,12 @@ html[data-zoom-fallback] .phone-shell-wrap {
 .desktop-grid-selects { margin-left:auto; display:flex; gap:6px; align-items:center; flex-shrink:0; }
 .desktop-grid-selects select { font:inherit; font-size:calc(12px * var(--app-text-scale,1)); color:var(--c-text-primary,inherit); border:0; border-radius:8px; background:var(--c-page-body-bg); padding:5px 6px; }
 .desktop-grid-setting .menu-label { min-width:0; }
+
+.operation-feedback-host{display:contents;}
+.operation-feedback-host:has(>aside.operation-feedback-toast,>.chat-operation-feedback)>button.operation-feedback-toast[data-notice-priority="normal"]{display:none;}
+.operation-feedback-host:has(>button[data-notice-priority="urgent"])>:is(aside.operation-feedback-toast,.chat-operation-feedback){display:none;}
+.operation-feedback-host:has(>.chat-operation-feedback)>aside.operation-feedback-toast{display:none;}
+.chat-operation-feedback{text-align:center;}
 
 /* Scale desktop tiles including folder previews; expanded folders, slots and widgets retain their geometry. */
 .phone-shell .icon-grid .icon-item > .icon-glyph-box {

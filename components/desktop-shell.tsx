@@ -2362,7 +2362,8 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets, initialL
     if (!notice) {
       return;
     }
-    const timeout = window.setTimeout(() => setNotice(null), 2200);
+    const duration = /本地保存(?:失败|未完成)/.test(notice) ? 8000 : /失败|错误|超时|无法|未成功|error|failed|timeout/i.test(notice) ? 5000 : /生成|刷新|加载/.test(notice) ? 3000 : 2200;
+    const timeout = window.setTimeout(() => setNotice(null), duration);
     return () => window.clearTimeout(timeout);
   }, [notice]);
 
@@ -4472,11 +4473,13 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets, initialL
                 </div>
               </header>
 
+              <div id="operation-feedback-host" className="operation-feedback-host">
               {notice ? (
-                <aside className="phone-shell-notice" role="status" aria-live="polite">
+                <button type="button" data-notice-priority={notice.includes("本地保存失败")?"urgent":"normal"} className="phone-shell-notice operation-feedback-toast" onClick={()=>setNotice(null)} role="status" aria-live="polite">
                   {notice}
-                </aside>
+                </button>
               ) : null}
+              </div>
 
 
               {customAppUpdatePrompt ? (

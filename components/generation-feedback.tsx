@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CheckCircle2, CircleAlert, Info, LoaderCircle, X } from "lucide-react";
+import {createPortal} from "react-dom";
+import { CheckCircle2, CircleAlert, Info, LoaderCircle } from "lucide-react";
 import { chooseGenerationOutcome, generationOutcome, isGenerationProgress, type GenerationOutcome } from "@/lib/generation-feedback";
 import styles from "./generation-feedback.module.css";
 
@@ -42,23 +43,27 @@ export function GenerationFeedback({ activeLabel, detail, result, onDismiss }: {
 }) {
   const [seconds, setSeconds] = useState(0);
   const busy = Boolean(activeLabel);
+  const [hidden,setHidden]=useState(false);
+  useEffect(()=>setHidden(false),[busy]);
+  useEffect(()=>{if(busy||!result)return;const timer=window.setTimeout(onDismiss,result.kind==="error"||result.kind==="warning"?5000:3000);return()=>window.clearTimeout(timer);},[busy,result]);
   useEffect(() => {
     if (!busy) return;
     const start = Date.now(); setSeconds(0);
     const timer = window.setInterval(() => setSeconds(Math.floor((Date.now() - start) / 1000)), 1000);
     return () => window.clearInterval(timer);
   }, [busy]);
-  if (!busy && !result) return null;
+  if ((busy && hidden) || (!busy && !result)) return null;
   const kind = busy ? "busy" : result!.kind;
   const title = busy ? activeLabel : ({success:"生成完成",error:"生成失败",warning:"生成有提示",empty:"本次无新增",info:"请求已结束"} as const)[result!.kind];
   const Icon = busy ? LoaderCircle : kind === "success" ? CheckCircle2 : kind === "error" || kind === "warning" ? CircleAlert : Info;
-  return <aside className={styles.panel} data-state={kind} role={kind === "error" ? "alert" : "status"} aria-live={kind === "error" ? "assertive" : "polite"} aria-atomic="true" aria-busy={busy}>
+  const panel = <aside onClick={()=>busy?setHidden(true):onDismiss()} className={`${styles.panel} operation-feedback-toast`} data-state={kind} role={kind === "error" ? "alert" : "status"} aria-live={kind === "error" ? "assertive" : "polite"} aria-atomic="true" aria-busy={busy}>
     <Icon className={busy ? styles.spinner : styles.icon} size={19} aria-hidden="true" />
     <div className={styles.copy}>
       <strong>{title}</strong>
       <p>{busy ? detail || "正在等待生成结果…" : result!.text}</p>
       {busy && <small aria-live="off">已等待 {seconds < 60 ? `${seconds} 秒` : `${Math.floor(seconds/60)} 分 ${seconds%60} 秒`}{seconds >= 60 ? " · 耗时较长，仍在等待返回" : ""}</small>}
     </div>
-    {!busy && <button type="button" aria-label="关闭生成结果" onClick={onDismiss}><X size={18}/></button>}
   </aside>;
+  const host = typeof document === "undefined" ? null : document.getElementById("operation-feedback-host");
+  return host ? createPortal(panel,host) : panel;
 }

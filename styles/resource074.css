@@ -71,8 +71,8 @@
 .offline-music-fixed .offline-music-strip{height:80px;min-height:80px;display:grid;grid-template-columns:minmax(0,1fr) 32px 32px;grid-template-rows:38px 18px;gap:4px 8px;padding:9px 12px 9px 76px;border-radius:24px;animation:none;clip-path:inset(-12px calc(100% - 68px) -12px -12px round 24px);opacity:0;pointer-events:none;transition:clip-path 420ms cubic-bezier(.25,.1,.25,1),opacity 300ms ease}
 .offline-music-fixed .offline-music-strip[data-open=true]{clip-path:inset(-20px -24px -24px -20px round 24px);opacity:1;pointer-events:auto}
 .offline-music-fixed .offline-music-info{align-self:center;line-height:1.4}
-.offline-music-fixed .offline-music-info strong{font-size:13px}
-.offline-music-fixed .offline-music-info small{font-size:11px}
+.offline-music-fixed .offline-music-info strong{font-size:calc(13px * var(--app-text-scale,1))}
+.offline-music-fixed .offline-music-info small{font-size:calc(11px * var(--app-text-scale,1))}
 .offline-music-fixed .offline-music-strip>button{width:32px;height:32px;align-self:center}
 .offline-music-fixed .offline-music-progress{grid-column:1/-1}
 .offline-music-fixed .offline-music-library{animation:none;opacity:0;visibility:hidden;pointer-events:none;transform:translateY(-10px) scaleY(.97);transform-origin:top;transition:opacity 240ms ease,transform 420ms cubic-bezier(.25,.1,.25,1),visibility 420ms;}

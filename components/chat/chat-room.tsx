@@ -7239,18 +7239,13 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             )}
 
             {/* Chat toast notification (overlay, does not affect layout) */}
-            {chatToast && (
-                <div className={`chat-toast-overlay${(chatToast === "对方正在忙碌中" || chatToast === "对方正在休息，醒来后再回复") ? " chat-busy-toast-overlay" : ""}`}>
-                    <div className="wp-toast chat-toast-floating">
-                        {chatToast === "加载音乐中..." ? (
-                            <span className="ui-loading-toast-content">
-                                <span className="ui-loading-spinner" />
-                                <span>{chatToast}</span>
-                            </span>
-                        ) : chatToast}
-                    </div>
-                </div>
-            )}
+            {chatToast && (() => {
+                const toast = <div className="operation-feedback-toast chat-operation-feedback" role="status" onClick={clearChatToast}>
+                    {chatToast === "加载音乐中..." ? <span className="ui-loading-toast-content"><span className="ui-loading-spinner"/><span>{chatToast}</span></span> : chatToast}
+                </div>;
+                const host = document.getElementById("operation-feedback-host");
+                return host ? createPortal(toast,host) : toast;
+            })()}
 
             {/* 单聊语音/视频通话：内联挂载（而非提前 return），使缩小为悬浮窗时通话组件
                 不被卸载，计时/字幕等状态得以保留；组件内部依据 minimized 决定渲染

@@ -665,6 +665,18 @@ export function DataManagement({ onNotice }: DataManagementProps) {
         </div>
       </div>
 
+      <div className="data-section">
+        <div className="menu-group">
+          <button type="button" className="menu-item" disabled={Boolean(busy)} onClick={()=>void runAction("重试本地保存",async()=>{
+            const [{flushKvWrites},{flushPendingChatMessages}]=await Promise.all([import("@/lib/kv-db"),import("@/lib/chat-db")]);
+            await Promise.all([flushKvWrites(),flushPendingChatMessages()]);
+            return "待保存数据已重试写入。";
+          })}>
+            <DataSettingsIcon icon={Database} color={BINDING_ACCENTS.api}/>
+            <div className="menu-label-group"><span className="menu-label">重试本地保存</span><span className="menu-desc">尝试写入尚未保存的数据，不会清除现有数据。</span></div>
+          </button>
+        </div>
+      </div>
       <AndroidLocalBackupSettings />
 
       <div className="data-section">
