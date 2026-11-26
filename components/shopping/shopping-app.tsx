@@ -499,6 +499,7 @@ export function ShoppingApp({ onClose, visible = true, onIdle, onBusyChange }: S
   const [notifyRecipient, setNotifyRecipient] = useState(true);
   const [addressOpen, setAddressOpen] = useState(false);
   const [addressOwnerId, setAddressOwnerId] = useState("");
+  const [editingAddressId,setEditingAddressId]=useState<string|null>(null);
   const [addressDraft, setAddressDraft] = useState({ name: "", phone: "", country: "", city: "", street: "" });
   const [shipGift, setShipGift] = useState<ShoppingGiftCandidate | null>(null);
   const cartFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1079,16 +1080,31 @@ export function ShoppingApp({ onClose, visible = true, onIdle, onBusyChange }: S
     setNewRegionCode(""); setNewRegionCountry(""); setNewRegionCurrency("CNY"); setNewCurrencyRate(""); setNewCurrencySymbol(""); setRegionError("");
   }
 
+  function editSavedAddress(address:ShoppingAddress) {
+    setEditingAddressId(address.id);setAddressOwnerId(address.ownerId||"");
+    setAddressDraft({name:address.name,phone:address.phone||"",country:address.country,city:address.city,street:address.street});
+    setDrawerOpen(false);setPaymentError(null);setAddressOpen(true);
+  }
+  function deleteSavedAddress(id:string) {
+    // Orders retain their own address labels/snapshots; only the saved-address list changes.
+    persist(current=>({...current,addresses:current.addresses.filter(item=>item.id!==id)}));
+    if(senderAddressId===id)setSenderAddressId("");
+    if(recipientAddressId===id)setRecipientAddressId("");
+    if(editingAddressId===id){setEditingAddressId(null);setAddressOpen(false);}
+  }
+  function manageAddresses() {setDrawerSection("addresses");setDrawerOpen(true);}
+
   function saveAddress() {
     const a = addressDraft;
     if (!a.name.trim() || !a.country.trim() || !a.city.trim() || !a.street.trim()) { setPaymentError("请填写收件人、国家、城市和详细地址。"); return; }
-    const address: ShoppingAddress = { id: `shop_address_${Date.now()}`, ownerId: addressOwnerId || undefined,
+    const address: ShoppingAddress = { id: editingAddressId || `shop_address_${Date.now()}`, ownerId: addressOwnerId || undefined,
       name: a.name.trim(), phone: a.phone.trim(), country: a.country.trim(), city: a.city.trim(), street: a.street.trim() };
-    persist(current => ({ ...current, addresses: [...current.addresses, address] }));
+    persist(current => ({ ...current, addresses: editingAddressId ? current.addresses.map(item=>item.id===editingAddressId?address:item) : [...current.addresses, address] }));
     if (addressOwnerId) { setRecipientId(addressOwnerId); setRecipientAddressId(address.id); }
     else setSenderAddressId(address.id);
     setPaymentError(null);
     setAddressOpen(false);
+    setEditingAddressId(null);
     setAddressDraft({ name: "", phone: "", country: "", city: "", street: "" });
   }
 
@@ -1253,7 +1269,8 @@ export function ShoppingApp({ onClose, visible = true, onIdle, onBusyChange }: S
     const items = checkoutFoodItems;
     if (!items.length) return;
     const address = recipientId ? currentRecipientAddress : deliveryFrom;
-    if (!address || !address.phone) { setPaymentError("请先填写收餐人的地址和电话。"); return; }
+    if (!address) { setPaymentError("请先选择收餐地址。"); return; }
+    if (!address.phone?.trim()) { setPaymentError("当前地址缺少电话，请到地址管理补填。"); return; }
     const foodRegion = state.regions.find(region => region.id === items[0]?.regionId) || state.regions.find(region => region.currency === foodCurrency && region.enabled) || currentRegion;
     if (address.country !== foodRegion.country) { setPaymentError("外卖需选择与收餐地址相同的地区。"); return; }
     if(items.some(item=>item.regionId!==items[0].regionId)){setPaymentError("不同配送地区的外卖请分别结算。");return;}
@@ -1808,7 +1825,7 @@ export function ShoppingApp({ onClose, visible = true, onIdle, onBusyChange }: S
               {selectedTab === "items" && <section style={{ display: "grid", gap: 12 }}>
                 <h2 style={{ fontSize: 20, margin: 0 }}>我的物品</h2>
                 <p style={{ color: "#888", fontSize: 12, margin: 0 }}>已到货的自购物品和收到的角色礼物。寄出后会从可送物品中移除。</p>
-                <button type="button" onClick={() => { setAddressOwnerId(""); setAddressOpen(true); }} style={{ border: "1px solid #eee", background: "#fff", padding: 12, borderRadius: 14, textAlign: "left" }}>管理我的发件地址 · {shopperAddresses.length} 个</button>
+                <button type="button" onClick={manageAddresses} style={{ border: "1px solid #eee", background: "#fff", padding: "10px 12px", borderRadius: 14, fontSize: "calc(12px * var(--app-text-scale, 1))", fontWeight: 400, lineHeight: 1.5, textAlign: "left" }}>管理我的发件地址 · {shopperAddresses.length} 个</button>
                 {state.shipments.map(shipment => <div key={shipment.id} style={{ padding: 15, borderRadius: 15, background: "#fff", fontSize: 12 }}>寄给 {shipment.recipientName} · {shipment.item.title}<br /><span style={{ color: "#888" }}>{new Date(shipment.deliverAt).getTime() <= nowTick ? "已签收" : `预计 ${new Date(shipment.deliverAt).toLocaleDateString("zh-CN")} 到达`}</span></div>)}
                 {warehouseGifts.length === 0 && <div className="cp-shopping-status cp-empty-copy"><p>暂无可送出的物品</p></div>}
                 {warehouseGifts.map(gift => <div key={gift.id} style={{ padding: 15, background: "#fff", borderRadius: 15, display: "flex", gap: 10, alignItems: "center" }}><span style={{ fontSize: 25 }}>{gift.previewIcon}</span><div style={{ flex: 1, minWidth: 0 }}><strong>{gift.productName}</strong><p style={{ margin: "3px 0", color: "#888", fontSize: 11 }}>{gift.source === "character" ? "角色送来" : gift.merchantLabel} · {gift.selectedOptions?.join(" / ") || ""} · {gift.priceLabel}</p></div><button type="button" onClick={() => { setShipGift(gift); setRecipientId(""); setRecipientAddressId(""); setPaymentError(null); }} style={{ border: 0, borderRadius: 12, padding: "9px 10px", background: "#111", color: "#fff" }}>转送</button></div>)}
@@ -2045,7 +2062,7 @@ export function ShoppingApp({ onClose, visible = true, onIdle, onBusyChange }: S
                   <span style={{ color: "#ff6b00" }}>{activeOrder.totalLabel}</span>
                 </div>
               </div>
-              {(!activeOrder.shippingTimeline?.some(event => event.status === "delivered" && Date.parse(event.timestamp) <= nowTick)) && <button type="button" onClick={() => setCancelOrderCandidate(activeOrder)} style={{ border: "1px solid #f5d0d0", borderRadius: 14, color: "#dc2626", background: "#fff", padding: 12 }}>取消订单并退款</button>}
+              {(!activeOrder.shippingTimeline?.some(event => event.status === "delivered" && Date.parse(event.timestamp) <= nowTick)) && <button type="button" onClick={() => setCancelOrderCandidate(activeOrder)} style={{ border: "1px solid #f5d0d0", borderRadius: 14, color: "#dc2626", background: "#fff", padding: "10px 12px", fontSize: "calc(12px * var(--app-text-scale, 1))", fontWeight: 400, lineHeight: 1.5 }}>取消订单并退款</button>}
             </div>
           </div>
         )}
@@ -2207,7 +2224,7 @@ export function ShoppingApp({ onClose, visible = true, onIdle, onBusyChange }: S
           setConfirmCheckoutOpen(false);
           setPaymentError(null);
         }}>
-          <div className="cp-shopping-translation-sheet" role="dialog" aria-modal="true" aria-label="选择付款方式" style={{ maxHeight: "82vh" }} onClick={event => event.stopPropagation()}>
+          <div className="cp-shopping-translation-sheet cp-shopping-checkout-sheet" role="dialog" aria-modal="true" aria-label="选择付款方式" style={{ maxHeight: "82vh" }} onClick={event => event.stopPropagation()}>
             <div className="cp-shopping-translation-head">
               <span>选择付款方式</span>
               <button type="button" onClick={() => {
@@ -2229,7 +2246,7 @@ export function ShoppingApp({ onClose, visible = true, onIdle, onBusyChange }: S
             <div style={{ display: "grid", gap: 9, marginBottom: 14, fontSize: 12 }}>
               <label>购买给谁<select className="ui-input" value={recipientId} onChange={event => { setRecipientId(event.target.value); setRecipientAddressId(""); }}><option value="">买给自己（到货后进入我的物品）</option>{loadCharacters().map(person => <option key={person.id} value={person.id}>直接寄给 {person.name}</option>)}</select></label>
               <label>收件地址<select className="ui-input" value={recipientId ? currentRecipientAddress?.id || "" : deliveryFrom?.id || ""} onChange={event => recipientId ? setRecipientAddressId(event.target.value) : setSenderAddressId(event.target.value)}><option value="">请选择地址</option>{(recipientId ? recipientAddresses : shopperAddresses).map(address => <option value={address.id} key={address.id}>{shoppingAddressLabel(address)}</option>)}</select></label>
-              <button type="button" onClick={() => { setAddressOwnerId(recipientId); setAddressDraft({ name: recipientId ? ownerName || "" : "", phone: "", country: currentRegion.country, city: "", street: "" }); setAddressOpen(true); }} style={{ border: "1px solid #ddd", background: "#fff", borderRadius: 12, padding: 9 }}>＋ 新建{recipientId ? "角色" : "我的"}地址</button>
+              <button type="button" onClick={() => { setAddressOwnerId(recipientId); setAddressDraft({ name: recipientId ? ownerName || "" : "", phone: "", country: currentRegion.country, city: "", street: "" }); setEditingAddressId(null); setAddressOpen(true); }} style={{ border: "1px solid #ddd", background: "#fff", borderRadius: 12, padding: 9 }}>＋ 新建{recipientId ? "角色" : "我的"}地址</button>
               {recipientId && <><label style={{ display: "flex", justifyContent: "space-between" }}>下单时通知对方<input type="checkbox" checked={notifyRecipient} onChange={event => setNotifyRecipient(event.target.checked)} /></label><span style={{ color: "#777" }}>关闭后，送达时先显示提示，再显示礼物卡。</span>{deliveryEstimate && <span style={{ color: "#777" }}>预计 {deliveryEstimate.days} 天到达 · 运费约 {formatCurrencyAmount(shippingFee, cartCurrency)}（参考估算）</span>}</>}
               {checkoutAddress && <label>配送方式<select className="ui-input" value={effectiveShippingMethod} onChange={event => setShippingMethod(event.target.value as typeof shippingMethod)}>{!internationalShipping ? <><option value="express">{state.region === "CN" ? "顺丰快递" : state.region === "KR" ? "CJ대한통운" : state.region === "JP" ? "ヤマト運輸" : "UPS Express"} · 快速</option><option value="standard">{state.region === "CN" ? "菜鸟普通" : "普通配送"} · 经济</option></> : <><option value="air">顺丰国际 · 空运</option><option value="sea">顺丰国际 · 海运</option></>}</select></label>}
             </div>
@@ -2302,9 +2319,9 @@ export function ShoppingApp({ onClose, visible = true, onIdle, onBusyChange }: S
         <div style={{ display: "grid", gap: 12, fontSize: 12 }}>
           <label>收礼人<select className="ui-input" value={recipientId} onChange={event => { setRecipientId(event.target.value); setRecipientAddressId(""); }}><option value="">请选择角色</option>{loadCharacters().map(person => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>
           <label>我的发件地址<select className="ui-input" value={deliveryFrom?.id || ""} onChange={event => setSenderAddressId(event.target.value)}><option value="">请选择</option>{shopperAddresses.map(a => <option key={a.id} value={a.id}>{shoppingAddressLabel(a)}</option>)}</select></label>
-          <button type="button" onClick={() => { setAddressOwnerId(""); setAddressDraft({ name: "", phone: "", country: "", city: "", street: "" }); setAddressOpen(true); }} style={{ padding: 8 }}>＋ 添加我的发件地址</button>
+          <button type="button" onClick={() => { setAddressOwnerId(""); setAddressDraft({ name: "", phone: "", country: "", city: "", street: "" }); setEditingAddressId(null); setAddressOpen(true); }} style={{ padding: 8 }}>＋ 添加我的发件地址</button>
           <label>角色收件地址<select className="ui-input" value={currentRecipientAddress?.id || ""} onChange={event => setRecipientAddressId(event.target.value)}><option value="">请选择</option>{recipientAddresses.map(a => <option key={a.id} value={a.id}>{shoppingAddressLabel(a)}</option>)}</select></label>
-          {recipientId && <button type="button" onClick={() => { setAddressOwnerId(recipientId); setAddressDraft({ name: ownerName || "", phone: "", country: "", city: "", street: "" }); setAddressOpen(true); }} style={{ padding: 8 }}>＋ 添加角色收件地址</button>}
+          {recipientId && <button type="button" onClick={() => { setAddressOwnerId(recipientId); setAddressDraft({ name: ownerName || "", phone: "", country: "", city: "", street: "" }); setEditingAddressId(null); setAddressOpen(true); }} style={{ padding: 8 }}>＋ 添加角色收件地址</button>}
           <label style={{ display: "flex", justifyContent: "space-between" }}>寄出时通知对方<input type="checkbox" checked={notifyRecipient} onChange={event => setNotifyRecipient(event.target.checked)} /></label>
           <span style={{ color: "#777", fontSize: 11 }}>关闭后，送达时先显示提示，再显示礼物卡。</span>
           {currentRecipientAddress && deliveryFrom && <span>预计 {shoppingDeliveryEstimate(deliveryFrom, currentRecipientAddress).days} 天 · 运费约 {formatCurrencyAmount(shoppingDeliveryEstimate(deliveryFrom, currentRecipientAddress).fee, "CNY")}，从 Wallet 扣除</span>}
@@ -2313,8 +2330,8 @@ export function ShoppingApp({ onClose, visible = true, onIdle, onBusyChange }: S
         </div>
       </div></div>}
 
-      {addressOpen && <div className="cp-shopping-translation-overlay" role="presentation" onClick={() => setAddressOpen(false)} style={{ zIndex: 110 }}><div className="cp-shopping-translation-sheet" role="dialog" aria-label="新增地址" style={{ maxHeight: "82vh" }} onClick={event => event.stopPropagation()}>
-        <div className="cp-shopping-translation-head"><span>新增{addressOwnerId ? "角色" : "我的"}地址</span><button type="button" onClick={() => setAddressOpen(false)}>关闭</button></div>
+      {addressOpen && <div className="cp-shopping-translation-overlay" role="presentation" onClick={() => setAddressOpen(false)} style={{ zIndex: 110 }}><div className="cp-shopping-translation-sheet" role="dialog" aria-label={editingAddressId ? "编辑地址" : "新增地址"} style={{ maxHeight: "82vh" }} onClick={event => event.stopPropagation()}>
+        <div className="cp-shopping-translation-head"><span>{editingAddressId ? "编辑" : "新增"}{addressOwnerId ? "角色" : "我的"}地址</span><button type="button" onClick={() => setAddressOpen(false)}>关闭</button></div>
         <div style={{ display: "grid", gap: 9 }}>{(["name", "phone", "country", "city", "street"] as const).map((key, i) => <label key={key} style={{ fontSize: 12 }}>{["收件人", "电话", "国家或地区", "城市", "详细地址"][i]}<input className="ui-input" value={addressDraft[key]} onChange={event => setAddressDraft(current => ({ ...current, [key]: event.target.value }))} /></label>)}
         {paymentError && <span style={{ color: "#c22", fontSize: 12 }}>{paymentError}</span>}
         <button type="button" onClick={saveAddress} style={{ border: 0, background: "#111", color: "#fff", padding: 13, borderRadius: 14 }}>保存地址</button></div>
@@ -2482,20 +2499,20 @@ export function ShoppingApp({ onClose, visible = true, onIdle, onBusyChange }: S
               <div className="cp-shopping-settings-group cp-shopping-settings-danger"><button type="button" onClick={() => { setDrawerOpen(false); setClearConfirmOpen(true); }}>清空购物痕迹<ChevronRight size={15} /></button></div>
             </> : <>
               <div className="cp-shopping-settings-group cp-shopping-settings-addresses">
-                {state.addresses.length ? state.addresses.map(address => <div className="cp-shopping-settings-address" key={address.id}><div><strong>{address.name}</strong><span>{shoppingAddressLabel(address)}</span></div><button type="button" aria-label={`删除${address.name}的地址`} onClick={() => persist(current => ({ ...current, addresses: current.addresses.filter(item => item.id !== address.id) }))}>删除</button></div>) : <p>还没有保存地址</p>}
+                {state.addresses.length ? state.addresses.map(address => <div className="cp-shopping-settings-address" key={address.id}><div><strong>{address.name}</strong><span>{shoppingAddressLabel(address)}</span></div><button type="button" onClick={()=>editSavedAddress(address)}>编辑</button><button type="button" aria-label={`删除${address.name}的地址`} onClick={()=>deleteSavedAddress(address.id)}>删除</button></div>) : <p>还没有保存地址</p>}
               </div>
-              <button className="cp-shopping-settings-add-address" type="button" onClick={() => { setDrawerOpen(false); setAddressOwnerId(""); setAddressDraft({ name: "", phone: "", country: currentRegion.country, city: "", street: "" }); setAddressOpen(true); }}>添加地址</button>
+              <button className="cp-shopping-settings-add-address" type="button" onClick={() => { setDrawerOpen(false); setAddressOwnerId(""); setAddressDraft({ name: "", phone: "", country: currentRegion.country, city: "", street: "" }); setEditingAddressId(null); setAddressOpen(true); }}>添加地址</button>
             </>}
           </div>
           <div className="cp-shopping-settings-drawer-footer"><button type="button" onClick={closeSettingsDrawer}>关闭</button></div>
         </aside>
       </div>}
 
-      {foodCheckoutOpen && <div className="cp-shopping-translation-overlay" role="presentation" onClick={() => setFoodCheckoutOpen(false)} style={{ zIndex: 102 }}><div className="cp-shopping-translation-sheet" role="dialog" aria-modal="true" aria-label="外卖结算" onClick={event => event.stopPropagation()} style={{ maxHeight: "80vh", overflowY: "auto" }}>
+      {foodCheckoutOpen && <div className="cp-shopping-translation-overlay" role="presentation" onClick={() => setFoodCheckoutOpen(false)} style={{ zIndex: 102 }}><div className="cp-shopping-translation-sheet cp-shopping-checkout-sheet" role="dialog" aria-modal="true" aria-label="外卖结算" onClick={event => event.stopPropagation()} style={{ maxHeight: "80vh", overflowY: "auto" }}>
         <div className="cp-shopping-translation-head"><span>外卖结算 · {formatCurrencyAmount(foodPayable, foodCurrency)}</span><button type="button" onClick={() => setFoodCheckoutOpen(false)}>关闭</button></div>
         <label style={{ display: "grid", gap: 5, fontSize: 12 }}>送给谁<select className="ui-input" value={recipientId} onChange={event => { setRecipientId(event.target.value); setRecipientAddressId(""); }}><option value="">送给自己</option>{loadCharacters().map(character => <option key={character.id} value={character.id}>{character.name}</option>)}</select></label>
         <label style={{ display: "grid", gap: 5, fontSize: 12, marginTop: 12 }}>收餐地址<select className="ui-input" value={recipientId ? currentRecipientAddress?.id || "" : deliveryFrom?.id || ""} onChange={event => recipientId ? setRecipientAddressId(event.target.value) : setSenderAddressId(event.target.value)}><option value="">请选择地址</option>{(recipientId ? recipientAddresses : shopperAddresses).map(address => <option value={address.id} key={address.id}>{shoppingAddressLabel(address)}</option>)}</select></label>
-        <button type="button" onClick={() => { setAddressOwnerId(recipientId); setAddressDraft({ name: ownerName || "", phone: "", country: currentRegion.country, city: "", street: "" }); setAddressOpen(true); }} style={{ border: 0, padding: 10, marginTop: 9, background: "#fff3e9", borderRadius: 10, color: "#b45309" }}>＋ 添加收餐地址</button>
+        <button type="button" onClick={() => { setAddressOwnerId(recipientId); setAddressDraft({ name: ownerName || "", phone: "", country: currentRegion.country, city: "", street: "" }); setEditingAddressId(null); setAddressOpen(true); }} style={{ border: 0, padding: 10, marginTop: 9, background: "#fff3e9", borderRadius: 10, color: "#b45309" }}>＋ 添加收餐地址</button>
         {recipientId && <><label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, marginTop: 12 }}><input type="checkbox" checked={notifyRecipient} onChange={event => setNotifyRecipient(event.target.checked)} />下单时通知对方</label><span style={{ color: "#777", fontSize: 11 }}>关闭后，送达时先显示提示，再显示外卖卡。</span></>}
         <div style={{ display: "flex", gap: 8, marginTop: 14 }}><button type="button" onClick={() => setSelectedPaymentSourceId(WALLET_BALANCE_ACCOUNT_ID)} style={{ flex: 1, border: selectedPaymentSourceId === WALLET_BALANCE_ACCOUNT_ID ? "1px solid #ff6b00" : "1px solid #ddd", borderRadius: 12, padding: 10, background: "#fff" }}>储蓄卡</button>{walletState.creditEnabled && <button type="button" onClick={() => setSelectedPaymentSourceId("wallet_credit_card")} style={{ flex: 1, border: selectedPaymentSourceId === "wallet_credit_card" ? "1px solid #ff6b00" : "1px solid #ddd", borderRadius: 12, padding: 10, background: "#fff" }}>信用卡</button>}</div>
         {paymentError && <p style={{ fontSize: 12, color: "#dc2626" }}>{paymentError}</p>}
