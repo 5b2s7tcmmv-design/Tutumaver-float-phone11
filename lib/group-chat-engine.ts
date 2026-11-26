@@ -126,6 +126,7 @@ export function annotateGroupHistory(
 
         // For rich-media messages, resolve content from mediaType/mediaData
         // charName = the "other party": for user msgs use recipient or "群聊", for AI msgs use the character's own name
+        if(msg.faceToFaceKind==="action"&&msg.role==="assistant"&&!msg.senderCharacterId)return {...msg,content:faceHistoryText(msg)};
         let content = msg.content;
         if (msg.mediaType) {
             const charName = msg.role === "user"
@@ -134,6 +135,7 @@ export function annotateGroupHistory(
             content = formatRichMediaForHistory(msg, userName, charName, true);
         }
 
+        if (msg.faceToFaceMode) content = "[当时为面对面交流] " + content;
         return {
             ...msg,
             content: `[${senderName}]: ${content}`,
@@ -145,10 +147,14 @@ export function annotateGroupHistory(
  * Parse the LLM output in [角色名]: format into per-character results.
  * Falls back: if no known name prefix found, assigns entire output to the first member.
  */
+import {faceToFaceInstruction,FACE_SCENE_ID,faceHistoryText} from "./chat-face-to-face";
+
 export function parseGroupChatResponse(
     text: string,
     nameToId: Map<string, string>,
+    face?: {actions:boolean},
 ): { characterId: string; characterName: string; responseText: string }[] {
+    if(face){return text.split(/(【现场动作】[\s\S]*?【\/现场动作】)/g).flatMap(segment=>{if(segment.startsWith("【现场动作】")&&segment.endsWith("【/现场动作】"))return face.actions?[{characterId:FACE_SCENE_ID,characterName:"",responseText:segment}]:[];return segment.trim()?parseGroupChatResponse(segment,nameToId):[];});}
     const names = [...nameToId.keys()];
     // 通用切分：任何 [名字]: 行都开启新段落——包括被踢成员、冒用的用户名或
     // 幻觉名字。未知名字的段落随后被 nameToId 校验整段丢弃，防止其内容以
@@ -253,7 +259,7 @@ export function buildEditableGroupRoundText(
         .map((result) => {
             const { cleanText } = parseActionTags(result.responseText);
             const cleaned = stripToolTags(cleanText).trim();
-            return cleaned ? `[${result.characterName}]: ${cleaned}` : "";
+            return cleaned ? (result.characterName ? `[${result.characterName}]: ${cleaned}` : cleaned) : "";
         })
         .filter(Boolean)
         .join("\n\n");
@@ -573,6 +579,7 @@ async function buildGroupChatPromptMessages(
     }
     if (callKnowledge) llmMessages.push({ role: "system", content: callKnowledge });
     if (options?.activeCall) llmMessages.push({ role: "system", content: groupCallInstruction(options.activeCall, members.map(m => ({ id:m.character.id, name:m.character.name }))) });
+    if(!isOfflineMode&&!options?.callFormatInstruction&&!promptProfile&&activeAppTags.includes("group_chat")&&!activeAppTags.some(t=>t==="voice"||t==="video")){const face=faceToFaceInstruction(loadChatSessions().find(s=>s.id===session.id)??session);if(face)llmMessages.push({role:"system",content:face});}
     appendEmptyGenerateGuardMessage(llmMessages, config, publicHistory);
 
     return { llmMessages, config, preset, regexes, nameToId, memberNames, enabledTools, userName, appTags: activeAppTags };
@@ -982,7 +989,7 @@ export async function generateGroupChatCompletion(
         // Push text to UI immediately before tool execution (parse per-character for proper avatar/name)
         if (callbacks?.onTextPart) {
             throwIfAborted(options?.signal);
-            const intermediateResults = parseGroupChatResponse(filteredOutput, nameToId);
+            const intermediateResults = parseGroupChatResponse(filteredOutput, nameToId, session.faceToFaceEnabled&&!options?.callFormatInstruction&&!options?.appTags?.some(t=>t==="offline"||t==="voice"||t==="video")?{actions:!!session.faceToFaceActions}:undefined);
             const responseRoundId = createResponseRoundId();
             const editableResponseText = buildEditableGroupRoundText(intermediateResults);
             for (const r of intermediateResults) {
@@ -1145,10 +1152,11 @@ export async function generateGroupChatCompletion(
 
     // Parse final output into per-character results
     throwIfAborted(options?.signal);
-    const parsed = parseGroupChatResponse(finalRawOutput, nameToId);
+    const parsed = parseGroupChatResponse(finalRawOutput, nameToId, session.faceToFaceEnabled&&!options?.callFormatInstruction&&!options?.appTags?.some(t=>t==="offline"||t==="voice"||t==="video")?{actions:!!session.faceToFaceActions}:undefined);
 
     const finalResults: typeof parsed = [];
     for (const r of parsed) {
+        if(r.characterId===FACE_SCENE_ID){finalResults.push(r);continue;}
         const { cleanText, actions } = parseActionTags(r.responseText);
         if (actions.length > 0) {
             throwIfAborted(options?.signal);

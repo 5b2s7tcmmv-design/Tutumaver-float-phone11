@@ -568,6 +568,7 @@ function pushChronologicalShortTermBlocks(params: {
         }
 
         if (!body.trim() && !imageUrl) return;
+        if (msg.faceToFaceMode) body = "[当时为面对面交流] " + body;
 
         const isAssistantImage = imageUrl && msg.role === "assistant" && msg.mediaType === "media_file";
         const text = isAssistantImage
@@ -1030,6 +1031,8 @@ export function assemblePromptPayload(input: AssemblerInput): LLMMessage[] {
                     body = formatRichMediaForHistory(msg, resolvedUserName, character?.name || "对方");
                 }
             }
+
+            if (msg.faceToFaceMode && (body.trim() || imageUrl)) body = "[当时为面对面交流] " + body;
 
             // 仿真拉黑：被用户拒收的角色消息在提示词历史里显式标注，
             // 模型每轮都能看到自己消息被拒收的直接证据，持续保持被拉黑的知情状态

@@ -55,6 +55,7 @@ import {
     loadRegexes,
     resolveUserIdentity,
 } from "./settings-storage";
+import {faceToFaceInstruction} from "./chat-face-to-face";
 import { assemblePromptPayload, applyOutputRegex, type LLMMessage, type LLMContentPart } from "./llm-prompt-assembler";
 import { MacroEngine, postProcessTrim } from "./macro-engine";
 import { getStatusRegionConfig, resolveStatusRegionSection, resolveStatusRegionExampleLine, resolveStatusRegionComposition, resolveStatusRegionFullExample } from "./chat-status-region";
@@ -2233,6 +2234,7 @@ export async function buildChatPromptMessages(
     if(!session.isGroup&&(options?.appId??'chat')==='chat'){
         if(!options?.callFormatInstruction){const check=inspectionIntentInstruction(character.id);if(check)llmMessages.push({role:'system',content:check});}
     }
+    if(resolvedAppId==="chat"&&!isOfflineMode&&!options?.callFormatInstruction&&!promptProfile&&!(effectiveAppTags??[]).some(tag=>tag==="voice"||tag==="video")){const face=faceToFaceInstruction(session);if(face)llmMessages.push({role:"system",content:face});}
     return { llmMessages, character, config, preset, regexes, userIdentity, toolsEnabled };
 }
 

@@ -27,6 +27,7 @@ import {
 // ── Types ──────────────────────────────────────────────
 
 export interface ParsedMessagePart {
+    faceToFaceAction?: boolean;
     content: string;
     mediaType?: ChatMessage["mediaType"];
     mediaData?: ChatMessage["mediaData"];
@@ -711,7 +712,7 @@ function parseSegment(segment: string, parts: ParsedMessagePart[]) {
 
 // ── Main parser ──────────────────────────────────────────
 
-export function parseAIResponse(rawText: string, previousState: StateValue[]): ParsedAIResponse {
+export function parseAIResponse(rawText: string, previousState: StateValue[], face?:{actions:boolean}): ParsedAIResponse {
     const acceptedAvatarRecommendation = /[\[【]\s*接受头像推荐\s*[\]】]/.test(rawText);
     const declinedAvatarRecommendation = /[\[【]\s*拒绝头像推荐\s*[\]】]/.test(rawText);
     const characterRemarkMatch = rawText.match(/[\[【]\s*(?:给用户备注|给你备注|用户备注)\s*[：:]\s*([^\]】\n]{1,40})\s*[\]】]/);
@@ -779,11 +780,12 @@ export function parseAIResponse(rawText: string, previousState: StateValue[]): P
         .replace(/(\[表情包[：:][^\]]+\])\n\n+/g, "$1\n");
 
     // 3. Split by double newlines (placeholders still in place)
-    const segments = stickerMerged.split(/\n\n+/).map(s => s.trim()).filter(Boolean);
+    const segments = (face?stickerMerged.split(/(【现场动作】[\s\S]*?【\/现场动作】)/g).flatMap(s=>s.startsWith("【现场动作】")?[s]:s.split(/\n\n+/)):stickerMerged.split(/\n\n+/)).map(s => s.trim()).filter(Boolean);
 
     // 4. Parse each segment
     const parts: ParsedMessagePart[] = [];
     for (const seg of segments) {
+        if(face&&seg.startsWith("【现场动作】")&&seg.endsWith("【/现场动作】")){if(face.actions)parts.push({content:seg,faceToFaceAction:true});continue;}
         parseSegment(seg, parts);
     }
     if (meetingInvite.raw) {

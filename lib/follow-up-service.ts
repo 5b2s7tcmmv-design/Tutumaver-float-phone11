@@ -313,6 +313,7 @@ async function dispatchBackgroundMessagesOneByOne(sessionId: string, messages: C
 }
 
 type BackgroundCompletionRound = {
+    faceToFace?: { actions: boolean };
     text: string;
     responseBatchId?: string;
     rawResponseText?: string;
@@ -325,6 +326,12 @@ async function generateBackgroundCompletionRounds(
     options: Parameters<typeof generateChatCompletion>[2],
 ): Promise<BackgroundCompletionRound[]> {
     const rounds: BackgroundCompletionRound[] = [];
+    // Capture the generation scene before awaiting the model; other APP actions
+    // and offline/call output must not inherit the current chat switch on save.
+    const faceToFace = !session.isGroup && !session.isSpectator && session.faceToFaceEnabled
+        && (!options?.appId || options.appId === "chat") && !options?.callFormatInstruction
+        && !options?.appTags?.some(tag => ["offline", "voice", "video"].includes(tag))
+        ? { actions: !!session.faceToFaceActions } : undefined;
     // 每轮 LLM 调用的思维链：onReasoning 先于该轮 onTextPart 触发，挂到该轮文本上
     let pendingReasoning: string | undefined;
     const result = await generateChatCompletion(session, messages, options, {
@@ -334,6 +341,7 @@ async function generateBackgroundCompletionRounds(
             const reasoningText = pendingReasoning;
             pendingReasoning = undefined;
             rounds.push({
+                faceToFace,
                 text,
                 responseBatchId: meta?.responseBatchId,
                 rawResponseText: meta?.rawResponseText ?? text,
@@ -343,7 +351,7 @@ async function generateBackgroundCompletionRounds(
     });
     if (rounds.length === 0) {
         const fallback = flattenCompletionResult(result);
-        if (fallback.trim()) rounds.push({ text: fallback, rawResponseText: fallback, reasoningText: pendingReasoning });
+        if (fallback.trim()) rounds.push({ faceToFace, text: fallback, rawResponseText: fallback, reasoningText: pendingReasoning });
     }
     return rounds;
 }
@@ -368,6 +376,7 @@ async function saveBackgroundCompletionRounds(
             contextMessages,
             {
                 ...options,
+                faceToFace: round.faceToFace,
                 responseBatchId: round.responseBatchId,
                 rawResponseText: round.rawResponseText,
                 reasoningText: round.reasoningText,
@@ -950,7 +959,7 @@ function buildGeneratedFollowUpImageMessage(
 }
 
 function canCarryFollowUpPanel(part: ParsedMessagePart): boolean {
-    return part.mediaType !== "poke" && part.mediaType !== "group_admin_notice";
+    return !part.faceToFaceAction && part.mediaType !== "poke" && part.mediaType !== "group_admin_notice";
 }
 
 // 后台保存 AI 回复的统一实现：分条、状态栏/独白、拍一拍、来电、收红包类动作、
@@ -966,6 +975,7 @@ export async function parseAndSaveResponse(
     followUpIndex: number | undefined,
     contextMessages: ChatMessage[],
     options?: {
+        faceToFace?: { actions: boolean };
         senderCharacterId?: string;
         senderName?: string;
         silent?: boolean;
@@ -988,7 +998,7 @@ export async function parseAndSaveResponse(
     const sess = sessions.find(s => s.id === sessionId);
     const previousState = sess && !sess.isGroup ? getLatestCharacterStateValues(sess.contactId) : [];
 
-    const { parts, stateValues, freshStateValues, statusPanel, innerMonologue, characterRemarkForUser } = parseAIResponse(rawText, previousState);
+    const { parts, stateValues, freshStateValues, statusPanel, innerMonologue, characterRemarkForUser } = parseAIResponse(rawText, previousState, options?.faceToFace);
     if (sess && !sess.isGroup && characterRemarkForUser) {
         const remark = Array.from(characterRemarkForUser.replace(/[\r\n]/g, " ").trim()).slice(0, 20).join("");
         if (remark) {
@@ -1167,6 +1177,8 @@ export async function parseAndSaveResponse(
             sessionId,
             role: "assistant",
             content: generatedPart.content,
+            faceToFaceMode: options?.faceToFace ? true : undefined,
+            faceToFaceKind: options?.faceToFace ? (filteredParts[i].faceToFaceAction ? "action" : "speech") : undefined,
             createdAt,
             mediaType: generatedPart.mediaType,
             mediaUrl: generatedPart.mediaUrl,

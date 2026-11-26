@@ -242,9 +242,9 @@ export function loadNativeTimeline(
             else if (msg.role === "tool") sender = "工具";
             else if (isSystemInstructionMessage(msg)) sender = "系统指令";
             else if (msg.role === "system") continue; // skip system messages in group timeline
-            else sender = msg.senderName || "未知";
+            else sender = msg.faceToFaceKind==="action"&&!msg.senderCharacterId?"现场动作":msg.senderName || "未知";
 
-            const msgLabel = formatPromptEventLabel(`群聊「${gs.groupName || "群聊"}」`, msg.createdAt, timeAware, timestampOptions);
+            const msgLabel = formatPromptEventLabel(`${msg.faceToFaceMode?"面对面·":""}群聊「${gs.groupName || "群聊"}」`, msg.createdAt, timeAware, timestampOptions);
             let content = stripStateAndInnerForPrompt(msg.content || "");
             if (msg.mediaData?.callAudienceIds) { const audience = msg.mediaData.callAudienceIds.map(id => chars.find(char => char.id === id)?.name || "参与者").join("、"); content = `【通话台词，仅${audience}听到】${content}`; }
 
@@ -340,7 +340,7 @@ export function loadNativeTimeline(
             if (isPromptHiddenChatMessage(msg)) continue;
             if (options?.afterTimestamp && msg.createdAt <= options.afterTimestamp) continue;
 
-            const msgLabel = formatPromptEventLabel("私聊", msg.createdAt, timeAware, timestampOptions);
+            const msgLabel = formatPromptEventLabel(msg.faceToFaceMode?"面对面·私聊":"私聊", msg.createdAt, timeAware, timestampOptions);
 
             if (msg.role === "system") {
                 // UI-only notification — skip from prompt

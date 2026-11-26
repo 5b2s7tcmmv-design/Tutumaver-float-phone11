@@ -1,4 +1,5 @@
 import { autoArchiveEndedCall } from './chat-call-archives';
+import { withoutFaceActionQuote } from './chat-face-to-face';
 import { chatGiftSourceLabel } from './chat-gift-label';
 import type { SocialMedia } from './social-media';
 import {restoreChatListEntry} from './chat-list-entry';
@@ -47,6 +48,11 @@ export type ChatContact = {
 export type ChatCharacterOutputLanguage = "persona" | "zh" | "ko" | "ja" | "en";
 
 export type ChatSession = {
+    faceToFaceEnabled?: boolean;
+    faceToFaceActions?: boolean;
+    faceToFaceActionPrompt?: string;
+    faceToFaceActionColor?: string;
+    faceToFaceActionSize?: number;
     id: string;
     contactId: string;
     lastMessageId?: string;
@@ -129,6 +135,8 @@ export type NativeToolCallRecord = { id: string; name: string; args: Record<stri
 export type NativeToolResultRecord = { toolCallId: string; name: string; content: string };
 
 export type ChatMessage = {
+    faceToFaceMode?: true;
+    faceToFaceKind?: "speech" | "action";
     id: string;
     sessionId: string;
     role: ChatMessageRole;
@@ -1502,7 +1510,7 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
     createdAt?: string;
 }): ChatMessage {
     let newMsg: ChatMessage = {
-        ...msg,
+        ...(msg.mediaType === "quote" ? withoutFaceActionQuote(msg, _messagesCache.filter(message => message.sessionId === msg.sessionId)) : msg),
         id: createMessageId(),
         createdAt: msg.createdAt || new Date().toISOString(),
         order: getNextMessageOrder(msg.sessionId),
@@ -2477,6 +2485,8 @@ export function replaceMessageWithParts(
             sessionId: original.sessionId,
             role: original.role,
             content: parts[i].content,
+            faceToFaceMode: original.faceToFaceMode,
+            faceToFaceKind: original.faceToFaceKind,
             mediaType: parts[i].mediaType,
             origin: original.origin,
             mediaData: parts[i].mediaData,
@@ -2524,6 +2534,10 @@ export function replaceResponseBatchWithParts(
     },
 ): ChatMessage[] {
     if (parts.length === 0) return [];
+    if (parts.some(part => part.mediaType === "quote")) {
+        const history = _messagesCache.filter(message => message.sessionId === sessionId);
+        parts = parts.map(part => withoutFaceActionQuote(part, history));
+    }
 
     const batchMessages = _loadAllMessages()
         .filter(m => m.sessionId === sessionId && m.responseBatchId === responseBatchId)
@@ -2545,6 +2559,8 @@ export function replaceResponseBatchWithParts(
         sessionId,
         role: firstMessage.role,
         content: part.content,
+        faceToFaceMode: firstMessage.faceToFaceMode,
+        faceToFaceKind: firstMessage.faceToFaceMode ? (part.content.startsWith("【现场动作】") && part.content.endsWith("【/现场动作】") ? "action" : "speech") : undefined,
         mediaType: part.mediaType,
         origin: firstMessage.origin,
         mediaData: part.mediaData,
@@ -2631,6 +2647,8 @@ export function replaceGroupResponseRound(
     editableResponseText: string,
     messages: Array<{
         content: string;
+        faceToFaceMode?: true;
+        faceToFaceKind?: ChatMessage["faceToFaceKind"];
         mediaType?: ChatMessage["mediaType"];
         mediaData?: ChatMessage["mediaData"];
         rawResponseText?: string;
@@ -2646,6 +2664,10 @@ export function replaceGroupResponseRound(
     }>,
 ): ChatMessage[] {
     if (messages.length === 0) return [];
+    if (messages.some(message => message.mediaType === "quote")) {
+        const history = _messagesCache.filter(message => message.sessionId === sessionId);
+        messages = messages.map(message => withoutFaceActionQuote(message, history));
+    }
 
     const roundMessages = _loadAllMessages()
         .filter(m => m.sessionId === sessionId && m.responseRoundId === responseRoundId)
@@ -2667,6 +2689,8 @@ export function replaceGroupResponseRound(
         sessionId,
         role: firstMessage.role,
         content: msg.content,
+        faceToFaceMode: firstMessage.faceToFaceMode ?? messages.find(m=>m.faceToFaceMode)?.faceToFaceMode,
+        faceToFaceKind: msg.faceToFaceKind,
         mediaType: msg.mediaType,
         origin: firstMessage.origin,
         mediaData: msg.mediaData,
